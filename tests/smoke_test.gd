@@ -544,7 +544,7 @@ func _test_no_silent_clicks() -> void:
 	c.state = "waiting"
 	c.walk_t = 99.0
 	sim.target = sim.queue.size() - 1
-	var rec := Config.burger(int(c.order_burger))
+	var rec := Config.burger(c.burger_idx())
 	var stack: Array = rec.get("stack", [])
 	sim.assembly.clear()
 	for k in stack:
@@ -996,10 +996,10 @@ func _held_count(sim: DaySim) -> int:
 
 func _two_waiting(order_a: int, order_b: int) -> Array:
 	var a := Customer.new()
-	a.sp = 0; a.state = "waiting"; a.order_burger = order_a; a.slot = 0
+	a.sp = 0; a.state = "waiting"; a.set_want("burger", order_a); a.slot = 0
 	a.max_patience = 90.0; a.patience = 90.0
 	var b := Customer.new()
-	b.sp = 1; b.state = "waiting"; b.order_burger = order_b; b.slot = 1
+	b.sp = 1; b.state = "waiting"; b.set_want("burger", order_b); b.slot = 1
 	b.max_patience = 90.0; b.patience = 90.0
 	return [a, b]
 
@@ -1281,9 +1281,9 @@ func _test_edge_cases() -> void:
 	# 错误顺序不扣除
 	var c := Customer.new()
 	c.sp = 0
-	c.order_burger = 0
-	c.order_fries = false
-	c.order_drink = ""
+	c.set_want("burger", 0)
+	c.set_want("fries", false)
+	c.set_want("drink", "")
 	c.state = "waiting"
 	c.max_patience = 46.0
 	c.patience = 46.0
@@ -1321,7 +1321,7 @@ func _test_edge_cases() -> void:
 	# 耐心归零离店
 	var c2 := Customer.new()
 	c2.sp = 1
-	c2.order_burger = 0
+	c2.set_want("burger", 0)
 	c2.state = "waiting"
 	c2.max_patience = 10.0
 	c2.patience = 0.01

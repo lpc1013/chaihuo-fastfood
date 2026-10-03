@@ -266,12 +266,21 @@ func drink_icon(did: String) -> Texture2D:
 			return art(str(Config.drinks()[i].get("art", "food/drink_cola")))
 	return art("food/drink_cola")
 
+## 小菜（薯条这一类）的图。出处就是 `dishes.sides[<id>].art`，
+## 以前是三行 if 各写一个路径，加一道小菜就得再补一行。
 func icon_food(kind: String) -> Texture2D:
-	if kind == "fries":
-		return art("food/food_fries")
-	if kind == "drink":
-		return art("food/food_cola")
-	return art("food/food_fries")
+	return art(str(Config.side(kind).get("art", "food/food_fries")))
+
+## 荷叶、票面、拖影上"这一件"画什么。三种 kind 各自的出处：
+##   burger → 那道堡的成品图；pick → 他选的那个选项的图；flag → sides 里登记的图
+func slot_icon(id: String, value: Variant) -> Texture2D:
+	match Config.tray_slot_kind(id):
+		"burger":
+			return icon_burger(int(value))
+		"pick":
+			return drink_icon(str(value))
+		_:
+			return icon_food(id)
 
 ## 把纹理裁成正方形后画进圆里。
 ## 直接整张贴进圆会把非正方形的立绘挤扁（老柴头像 640×355 就是这样变形的），

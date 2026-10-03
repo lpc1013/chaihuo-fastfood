@@ -359,7 +359,7 @@ func _draw_customer(c: Customer, L: Dictionary, alpha: float) -> void:
 	UiKit.draw_sprite(self, UiKit.art("characters/full_" + img_name), x, foot_y, h)
 
 func _draw_order_bubble(c: Customer, L: Dictionary) -> void:
-	var items := 1 + (1 if c.order_fries else 0) + (1 if c.order_drink != "" else 0)
+	var items := c.wanted_kinds().size()
 	var ic := 52.0
 	var say := str(c.say)
 	var has_say := say != "" and c.say_t > 0.0
@@ -388,8 +388,10 @@ func _draw_order_bubble(c: Customer, L: Dictionary) -> void:
 	var by := maxf(top_lim, float(L["head_y"]) - bh - 4.0)
 	UiKit.draw_tex_box(self, UiKit.art("ui/ticket_paper"), Rect2(bx, by, bw, bh))
 	var ix := bx + (bw - (items * ic + (items - 1) * 6.0)) / 2.0
-	for tex in [UiKit.icon_burger(c.order_burger)] + ([UiKit.icon_food("fries")] if c.order_fries else []) + ([UiKit.drink_icon(c.order_drink)] if c.order_drink != "" else []):
-		UiKit.draw_tex_contain(self, tex, Rect2(ix, by + 6, ic, ic))
+	# 票面上那排图标按"客人点了哪几件"画。以前是把三件的图拼成一个数组，
+	# 顺序、要不要出现、画哪张三件事各写一遍；现在槽位注册表说了算。
+	for id in c.wanted_kinds():
+		UiKit.draw_tex_contain(self, UiKit.slot_icon(str(id), c.want(str(id))), Rect2(ix, by + 6, ic, ic))
 		ix += ic + 6.0
 	for li in say_lines.size():
 		UiKit.draw_text_centered(self, bx + bw / 2.0, by + 6.0 + ic + say_size * (1.15 + 1.35 * float(li)),
@@ -676,7 +678,7 @@ func _tick_fry(delta: float) -> void:
 	elif _fry_p_prev >= 0.0 and fp < 0.0:
 		if _fry_p_prev >= burn_at:
 			fry_phase = "burn"
-		elif bool(sim.tray["fries"]):
+		elif sim.tray_has_slot(FRYER_SLOT):
 			fry_phase = "up"
 		else:
 			fry_phase = ""
@@ -792,19 +794,51 @@ func _draw_asm(rect: Rect2) -> void:
 		draw_line(Vector2(sx - 22, sy - 26), Vector2(sx + 34, sy + 2), Color(1.0, 0.85, 0.45, a * 0.65), 2.0)
 	_hits.append({"rect": rect, "id": "asm"})
 
+## 荷叶上每一件画在哪、画多大。三种锚点：
+##   center → x 取格心；left → 格左边 + off*ih；right → 格右边 - off*ih
+## 泛化前这是三段各写一遍的 if（顺序、图、落点、大小全写死），加一道小菜就得再补一段；
+## 现在补一行表就行。没登记的槽位退回 center/0.8——画得出来，但会和堡叠在同一处，
+## 所以真上新菜记得同时补这张表。
+const TRAY_GEO := {
+	"burger": {"anchor": "center", "off": 0.0, "size": 1.15},
+	"fries": {"anchor": "left", "off": 0.40, "size": 0.80},
+	"drink": {"anchor": "right", "off": 0.40, "size": 0.86},
+}
+
+## 没选中客人时拖影该提哪一件。⚠ 这个优先次序**不是**荷叶的摆放顺序——
+## 泛化之前就写成 堡 → 饮料 → 薯条，改成照 `tray_slots` 的顺序遍历会在"饮料和薯条
+## 都在盘上"时提错那件。所以单独列一张表，别去复用上面的顺序。
+const GHOST_PRIORITY := ["burger", "drink", "fries"]
+
+## 炸炉产出的是哪一格。工位和它的产出物天生一对，但把这个名字集中一处——
+## 将来"炸炉扩双篮、第二篮出炸鸡腿"时，这里改一行比在动画代码里翻来覆去找强。
+const FRYER_SLOT := "fries"
+
+func _tray_x(anchor: String, off: float, ih: float, zone: Rect2) -> float:
+	match anchor:
+		"left":
+			return zone.position.x + ih * off
+		"right":
+			return zone.end.x - ih * off
+		_:
+			return zone.position.x + zone.size.x / 2.0
+
+
 func _draw_tray(rect: Rect2) -> void:
 	var zone := _cell_zone(rect)
 	var ih := float((_shelf_metrics(ly())["cell"] as float)) * 0.80
-	var cx := zone.position.x + zone.size.x / 2.0
 	var base_y := zone.end.y - 2.0
-	var b := int(sim.tray["burger"])
-	if b >= 0:
-		UiKit.draw_sprite(self, UiKit.icon_burger(b), cx, base_y, ih * 1.15)
-	if bool(sim.tray["fries"]):
-		UiKit.draw_sprite(self, UiKit.icon_food("fries"), zone.position.x + ih * 0.40, base_y, ih * 0.80)
-	if str(sim.tray["drink"]) != "":
-		UiKit.draw_sprite(self, UiKit.drink_icon(str(sim.tray["drink"])), zone.end.x - ih * 0.40, base_y, ih * 0.86)
-	if b >= 0 or bool(sim.tray["fries"]) or str(sim.tray["drink"]) != "":
+	var any := false
+	for id in Config.tray_slot_ids():
+		var sid := str(id)
+		if not sim.tray_has_slot(sid):
+			continue
+		any = true
+		var v = sim.tray.get(sid, Config.tray_blank(sid))
+		var g: Dictionary = TRAY_GEO.get(sid, {"anchor": "center", "off": 0.0, "size": 0.8})
+		UiKit.draw_sprite(self, UiKit.slot_icon(sid, v),
+			_tray_x(str(g["anchor"]), float(g["off"]), ih, zone), base_y, ih * float(g["size"]))
+	if any:
 		var gp := 0.5 + 0.5 * sin(t * 4.0)
 		UiKit.draw_focus(self, Rect2(rect.position.x + 2, rect.position.y + 2, rect.size.x - 4, rect.size.y - 4),
 			Color(0.55, 1.0, 0.72, 0.2 + 0.35 * gp))
@@ -1097,20 +1131,13 @@ func _draw_drag_ghost() -> void:
 	if sim.target >= 0 and sim.target < sim.queue.size():
 		kind = sim.next_kind_for(sim.queue[sim.target])
 	if kind == "":
-		if int(sim.tray["burger"]) >= 0:
-			kind = "burger"
-		elif str(sim.tray["drink"]) != "":
-			kind = "drink"
-		elif bool(sim.tray["fries"]):
-			kind = "fries"
+		for id in GHOST_PRIORITY:
+			if sim.tray_has_slot(str(id)):
+				kind = str(id)
+				break
 	var tex: Texture2D = null
-	match kind:
-		"burger":
-			tex = UiKit.icon_burger(int(sim.tray["burger"]))
-		"drink":
-			tex = UiKit.drink_icon(str(sim.tray["drink"]))
-		"fries":
-			tex = UiKit.icon_food("fries")
+	if kind != "":
+		tex = UiKit.slot_icon(kind, sim.tray.get(kind, Config.tray_blank(kind)))
 	if tex == null:
 		return
 	var gh := 88.0

@@ -238,15 +238,10 @@ func _spawn_customer() -> void:
 	c.sp = int(spec.get("sp", 0))
 	# 计划表按解锁日编排，但声望门槛是运行时才知道的：玩家这周失误多的话，第 5 天可能还只有 3★。
 	# 未达标的单必须就地换成一道能做的，否则顾客点出一份拼不出来的堡，变成必走单。
-	c.order_burger = Config.burger_resolved(int(spec.get("burger", 0)))
-	c.order_fries = bool(spec.get("fries", false))
-	var want_drink = spec.get("drink", false)
-	if want_drink is String:
-		c.order_drink = str(want_drink)
-	elif bool(want_drink):
-		c.order_drink = str(Config.drink_def(rng.randi_range(0, maxi(Config.drinks().size() - 1, 0))).get("id", "cola"))
-	else:
-		c.order_drink = ""
+	# 槽位按 Config.tray_slots() 的顺序逐个填——顺序和泛化前那三行赋值一致，
+	# 而"点饮料"那次 rng 调用只在真的要饮料时才发生，随机数消耗序列没变。
+	for id in Config.tray_slot_ids():
+		c.set_want(str(id), _want_from_spec(str(id), spec))
 	var base := float(Config.economy.get("patience_base_seconds", 46.0))
 	var pm := float(Config.species(c.sp).get("patience_mult", 1.0))
 	c.max_patience = base * pm * day_patience_scale(day)
@@ -258,6 +253,26 @@ func _spawn_customer() -> void:
 	_assign_slots()
 	customer_spawned.emit(c)
 	sfx_requested.emit("spawn")
+
+## 客流表里那一列 → 这一槽位客人要什么。三种 kind 各自的读法：
+##   burger 走 burger_resolved（声望不够就换成做得出的那道）
+##   flag   直接收 bool
+##   pick   表里写字符串就照它、写 true 就随机挑一杯、写 false 就是不点
+## ⚠ 随机数只在 pick 真要点的时候才消耗，所以顺序和泛化前那三行赋值完全一致。
+## 槽位 id 和客流表的列名本来就同名（burger / fries / drink），加新菜时保持这个同名约定。
+func _want_from_spec(id: String, spec: Dictionary) -> Variant:
+	match Config.tray_slot_kind(id):
+		"burger":
+			return Config.burger_resolved(int(spec.get(id, 0)))
+		"pick":
+			var v = spec.get(id, false)
+			if v is String:
+				return str(v)
+			if bool(v):
+				return str(Config.drink_def(rng.randi_range(0, maxi(Config.drinks().size() - 1, 0))).get("id", "cola"))
+			return ""
+		_:
+			return bool(spec.get(id, false))
 
 func _roll_burger(r: RandomNumberGenerator) -> int:
 	var open: Array = Config.open_burger_indices()
@@ -440,28 +455,26 @@ func fire_low() -> bool:
 ## 以前在堡做完那一刻就把 sauce_tip 清零，结算时读到的永远是 0（等于酱料加小费这条
 ##  advertised 机制根本没生效）；而先做下一个堡再上菜的话，上一单还会拿到下一单的酱钱。
 func _empty_tray() -> Dictionary:
-	return {"burger": -1, "fries": false, "drink": "", "burger_tip": 0}
+	return Config.empty_tray()
 
-## 托盘上这件是不是这位要的（堡要点名对上他要的那道）。
+## 托盘上这件是不是这位要的。"对上"按 kind 各有三种判法：
+##   burger 要下标相等、pick 要选项 id 相等、flag 只要有就算。
+## 以前这里是三条 match 分支各写一遍字段名，加一道菜就得再补一条。
 func _tray_has(c: Customer, kind: String) -> bool:
-	match kind:
+	match Config.tray_slot_kind(kind):
 		"burger":
-			return int(tray["burger"]) >= 0 and int(tray["burger"]) == c.order_burger and not bool(c.got.get("burger", false))
-		"fries":
-			return bool(tray["fries"])
-		"drink":
-			return str(tray["drink"]) != "" and str(tray["drink"]) == c.order_drink
-	return false
+			return int(tray[kind]) >= 0 and int(tray[kind]) == int(c.want(kind)) \
+				and not bool(c.got.get(kind, false))
+		"pick":
+			return str(tray[kind]) != "" and str(tray[kind]) == str(c.want(kind))
+		_:
+			return bool(tray[kind])
 
 func _take_tray(kind: String) -> void:
-	match kind:
-		"burger":
-			tray["burger"] = -1
-			tray["burger_tip"] = 0
-		"fries":
-			tray["fries"] = false
-		"drink":
-			tray["drink"] = ""
+	tray[kind] = Config.tray_blank(kind)
+	# 背小费的那一件（现在是堡）收走时，把挂在这一份上的酱钱一起清掉
+	if Config.tip_slot() == kind:
+		tray[kind + "_tip"] = 0
 
 ## 这位还缺、而荷叶上正好有的那一件（按 堡→饮料→薯条 之外的"客人点单顺序"给）。
 ## 视图层拿它决定手里提的是哪件、点一下客人递的是哪件。
@@ -490,7 +503,7 @@ func next_need_ing() -> String:
 	var c: Customer = queue[target]
 	if c.state != "waiting":
 		return ""
-	var stack: Array = Config.burger(c.order_burger).get("stack", [])
+	var stack: Array = Config.burger(c.burger_idx()).get("stack", [])
 	if assembly.size() >= stack.size():
 		return ""
 	return str(stack[assembly.size()])
@@ -652,7 +665,7 @@ func tap_shelf(ing: String) -> void:
 		_snark("noorder")
 		return
 	var c: Customer = queue[target]
-	var rec := Config.burger(c.order_burger)
+	var rec := Config.burger(c.burger_idx())
 	var stack: Array = rec.get("stack", [])
 	if assembly.size() >= stack.size():
 		_snark_text(Config.misc("stack_full") % str(rec.get("name", "")))
@@ -716,18 +729,19 @@ func slice_board() -> bool:
 
 func _finish_assembly(ing: String) -> void:
 	var c: Customer = queue[target]
-	var stack: Array = Config.burger(c.order_burger).get("stack", [])
+	var stack: Array = Config.burger(c.burger_idx()).get("stack", [])
 	assembly.append(ing)
 	sfx_requested.emit("place")
 	if assembly.size() == stack.size():
-		if int(tray["burger"]) >= 0:
+		var bs := Config.burger_slot()
+		if int(tray[bs]) >= 0:
 			_snark("trayfull")
 			refund_assembly()
 			return
-		tray["burger"] = c.order_burger
+		tray[bs] = c.burger_idx()
 		# 这一份堡的酱钱跟着堡存进荷叶，不清零成"下一个堡的"——以前在这里清掉，
 		# 结算时读到的 sauce_tip 恒为 0，"挤酱加小费"等于没做。
-		tray["burger_tip"] = sauce_tip
+		tray[bs + "_tip"] = sauce_tip
 		assembly = []
 		sauces_used = {}
 		sauce_tip = 0
@@ -736,7 +750,7 @@ func _finish_assembly(ing: String) -> void:
 			var nx := -1
 			for j in queue.size():
 				var cc: Customer = queue[j]
-				if cc.state == "waiting" and int(tray["burger"]) != cc.order_burger:
+				if cc.state == "waiting" and int(tray[bs]) != cc.burger_idx():
 					nx = j
 					break
 			if nx >= 0:
@@ -758,7 +772,7 @@ func tap_customer(c: Customer) -> void:
 			_snark_text(Config.misc("swap_order"))
 		target = idx
 		sfx_requested.emit("tap")
-	elif int(tray["burger"]) >= 0:
+	elif int(tray[Config.burger_slot()]) >= 0:
 		_snark("nomatch")
 
 ## 一物一交付：把荷叶上**一件**成品递给这位客人，收齐他点的全部几件才走结算。
@@ -779,10 +793,10 @@ func deliver(c: Customer, kind: String) -> bool:
 		_snark_text(Config.misc("tray_no_kind") % _item_label(c, kind))
 		return false
 	var label := _item_label(c, kind)
-	if kind == "burger":
+	if Config.tip_slot() == kind:
 		# 用 get 而不是直接取键：测试里会手摆 tray 字典，少一个键就会让这一句抛错、
 		# 整个 deliver 原地断掉（GDScript 的 SCRIPT ERROR 会中止当前函数）。
-		c.tip_bonus += int(tray.get("burger_tip", 0))
+		c.tip_bonus += int(tray.get(kind + "_tip", 0))
 	_take_tray(kind)
 	c.got[kind] = true
 	sfx_requested.emit("deliver")
@@ -791,24 +805,44 @@ func deliver(c: Customer, kind: String) -> bool:
 		_settle_order(c)
 	return true
 
-## 递出去那件的报名：堡按客人点的那道报，饮料按罐子报，别让玩家猜"香料油"是什么。
-func _item_label(c: Customer, kind: String) -> String:
-	match kind:
+## 这一格现在是不是空的（荷叶上没这一件）。
+func _slot_blank(id: String, v) -> bool:
+	match Config.tray_slot_kind(id):
 		"burger":
-			return str(Config.burger(int(tray["burger"]) if int(tray["burger"]) >= 0 else c.order_burger).get("name", "汉堡"))
-		"fries":
-			return str(Config.misc("kind_fries"))
-		"drink":
-			var did := str(tray["drink"])
-			if did == "":
-				did = str(c.order_drink)
+			return int(v) < 0
+		"pick":
+			return str(v) == ""
+		_:
+			return not bool(v)
+
+## 荷叶上此刻有没有这一件（不看谁点的）。视图层画荷叶、算"盘子空不空"都问这个，
+## 免得把上面那段 kind 判法在第二个文件里再抄一遍。
+func tray_has_slot(id: String) -> bool:
+	return not _slot_blank(id, tray.get(id, Config.tray_blank(id)))
+
+## 递出去那件的报名：荷叶上有这一件就按荷叶上那件报（"手上这杯是橙汁"），
+## 没有才按客人点的报——这个区别在 `tray_no_kind` 那句文案上看得到，别顺手统一掉。
+## ⚠ kind=flag 这一支读的是 `Config.misc("kind_<id>")`，和票面上 `Customer.item_label()`
+##   读的 `sides.name` **不是同一个词**（票上"炸薯条"、这里"薯条"）。那是泛化之前就
+##   存在的双套叫法，本轮只动结构、没去改文案。
+func _item_label(c: Customer, kind: String) -> String:
+	var v = tray.get(kind, Config.tray_blank(kind))
+	if _slot_blank(kind, v):
+		v = c.want(kind)
+	match Config.tray_slot_kind(kind):
+		"burger":
+			return str(Config.burger(int(v)).get("name", "汉堡"))
+		"pick":
 			for d in Config.drinks():
-				if str((d as Dictionary).get("id", "")) == did:
+				if str((d as Dictionary).get("id", "")) == str(v):
 					return str((d as Dictionary).get("name", "饮料"))
-	return str(Config.misc("kind_drink"))
+		_:
+			pass
+	return str(Config.misc("kind_" + kind))
+
 
 func _settle_order(c: Customer) -> void:
-	var rec := Config.burger(c.order_burger)
+	var rec := Config.burger(c.burger_idx())
 	var price := int(rec.get("price", 0))
 	var frac := c.patience_frac()
 	# 声望星级挂小费：3★（开局水位）= ×1.0，5★=×1.45，掉到 2★ 以下开始扣。
@@ -874,7 +908,11 @@ func _settle_order(c: Customer) -> void:
 	_check_day_end()
 
 func tray_has() -> bool:
-	return int(tray["burger"]) >= 0 or bool(tray["fries"]) or str(tray["drink"]) != ""
+	# 以前是三格各写一句 or；现在问注册表"有没有哪一格不空"
+	for id in Config.tray_slot_ids():
+		if not _slot_blank(str(id), tray.get(str(id), Config.tray_blank(str(id)))):
+			return true
+	return false
 
 # ---------------- 抛硬币 / 划过拾取 / 收币客人 ----------------
 
@@ -1032,7 +1070,10 @@ func dump_tray() -> bool:
 	if not tray_has():
 		_snark_text(Config.misc("tray_empty"))
 		return false
-	tray = {"burger": -1, "fries": false, "drink": ""}
+	# 这里原来手抄了一份 {"burger":-1,"fries":false,"drink":""}，**少了 burger_tip**。
+	# 今天看不出差别（读它的人一律带默认值），但等荷叶上有第四件时，这一行会把
+	# 新那件留在盘上——倒一次盘子等于白得一份小菜。所以走注册表，不再手抄。
+	tray = _empty_tray()
 	_snark("dumped")
 	sfx_requested.emit("burnt")
 	shake_requested.emit()

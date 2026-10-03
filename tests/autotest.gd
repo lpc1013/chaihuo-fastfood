@@ -534,7 +534,7 @@ func run(m: Node) -> void:
 	if fr == null:
 		fails.append("逐件交付用例没抓到等待中的客人，整条没跑")
 	else:
-		fr.order_fries = true
+		fr.set_want("fries", true)
 		fr.got = {}
 		fr.slot = 0
 		late.sim.tray = {"burger": -1, "fries": true, "drink": "", "burger_tip": 0}
@@ -847,12 +847,14 @@ func _probe_rep_tip() -> void:
 		c.sp = 0
 		c.state = "waiting"
 		c.walk_t = 99.0
-		c.order_burger = 0
+		c.set_want("burger", 0)
 		c.max_patience = 40.0
 		c.patience = 32.0          # 钉死 0.8 的耐心比例，全场只让星级这一个变量动
 		probe.queue.append(c)
-		probe.tray = {"burger": 0, "fries": false, "drink": "", "burger_tip": 0}
-		# 这位只点了堡（order_fries/order_drink 都是空的），所以递出这一件就算收齐
+		# 荷叶初值一律从注册表拿，别再手抄一份三格字面量
+		probe.tray = Config.empty_tray()
+		probe.tray[Config.burger_slot()] = 0
+		# 这位只点了堡（fries / drink 两格他都没要），所以递出这一件就算收齐
 		if not probe.deliver(c, "burger"):
 			fails.append("声望 A/B：%d★ 那单没出餐，探针没跑起来" % stars)
 			break
@@ -882,9 +884,9 @@ func _probe_rep_tip() -> void:
 	var locked := 0
 	for i in low.queue.size():
 		var cust: Customer = low.queue[i]
-		if int(cust.order_burger) != int((low.plan[i] as Dictionary).get("burger", 0)):
+		if cust.burger_idx() != int((low.plan[i] as Dictionary).get("burger", 0)):
 			remapped += 1
-		if not Config.burger_open(int(cust.order_burger)):
+		if not Config.burger_open(cust.burger_idx()):
 			locked += 1
 	print("[rep-gate] 第5天 1★：来客 %d 位，回退 %d 位，仍点到未解锁 %d 位" % [low.queue.size(), remapped, locked])
 	if locked > 0:
@@ -928,7 +930,7 @@ func _probe_quickcut(late) -> void:
 		fails.append("造不出顾客，快刃菜板没被测到")
 		return
 	var cc = late.sim.queue[0]
-	cc.order_burger = int(pick["burger"])
+	cc.set_want("burger", int(pick["burger"]))
 	cc.state = "waiting"
 	cc.walk_t = 99.0
 	var ing := str(pick["ing"])

@@ -110,8 +110,8 @@ func step(dt: float) -> void:
 	var still_open := owner != null and not owner.got_all()
 	var fp := float(sim.fryer["p"])
 	if fp < 0.0:
-		if still_open and owner.order_fries and not bool(owner.got.get("fries", false)) \
-				and not bool(sim.tray["fries"]) and sim.can_cook():
+		if still_open and owner.wants("fries") and not bool(owner.got.get("fries", false)) \
+				and not sim.tray_has_slot("fries") and sim.can_cook():
 			if GameState.inv_count("potato") <= 0:
 				GameState.buy_ingredient("potato", 5, 1.5)
 			if GameState.inv_count("potato") > 0:
@@ -125,12 +125,12 @@ func step(dt: float) -> void:
 
 	var dp := float(sim.drink["p"])
 	if dp < 0.0:
-		if still_open and owner.order_drink != "" and not bool(owner.got.get("drink", false)) \
-				and str(sim.tray["drink"]) == "":
+		if still_open and owner.wants("drink") and not bool(owner.got.get("drink", false)) \
+				and not sim.tray_has_slot("drink"):
 			if GameState.inv_count("drink") <= 0:
 				GameState.buy_ingredient("drink", 5, 1.5)
 			if GameState.inv_count("drink") > 0:
-				sim.tap_drink(_jar_of(owner.order_drink))
+				sim.tap_drink(_jar_of(str(owner.want("drink"))))
 	else:
 		var dwin: Array = Config.cook("drink").get("window", [0.62, 0.95])
 		if dp >= float(dwin[0]) and dp <= float(dwin[1]):
@@ -139,7 +139,7 @@ func step(dt: float) -> void:
 			sim.tap_drink()
 
 	# 5) 组装：只给"还没有收到堡"的目标叠（逐件交付之后，got.burger 为真的人再叠一只就是白烧食材）
-	if target != null and int(sim.tray["burger"]) < 0 and not bool(target.got.get("burger", false)):
+	if target != null and not sim.tray_has_slot(Config.burger_slot()) and not bool(target.got.get("burger", false)):
 		var need := sim.next_need_ing()
 		if need == "patty":
 			if sim.cooked > 0:
@@ -156,16 +156,16 @@ func step(dt: float) -> void:
 ## 队列里还有没有人要托盘上这只堡。刚进门还在走的也算，否则会在买家到的前一瞬把堡倒掉。
 ## 托盘汉堡的主人：优先能立即上餐的等待者；否则找同款汉堡的等待者；无汉堡时用当前目标
 func _tray_owner() -> Customer:
-	var tb := int(sim.tray["burger"])
+	var tb := int(sim.tray[Config.burger_slot()])
 	if tb < 0:
 		if sim.target >= 0 and sim.target < sim.queue.size():
 			return sim.queue[sim.target]
 		return null
 	for c in sim.queue:
-		if c.state == "waiting" and c.order_burger == tb and sim.next_kind_for(c) == "burger":
+		if c.state == "waiting" and c.burger_idx() == tb and sim.next_kind_for(c) == "burger":
 			return c
 	for c in sim.queue:
-		if c.state == "waiting" and c.order_burger == tb:
+		if c.state == "waiting" and c.burger_idx() == tb:
 			return c
 	return null
 

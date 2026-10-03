@@ -158,6 +158,76 @@ func sauce_unlock_day() -> int:
 func sauces_open() -> bool:
 	return GameState.day >= sauce_unlock_day()
 
+# ---------- 荷叶槽位 ----------
+## 荷叶上有那么几件、每件是什么类型，全在这里定义。以后加一道小菜 = 这里加一条
+## + `sides` 里登记它的名字/图/价格，**不用再改 day_sim、play 和测试里的判断分支**。
+## kind 三种：
+##   "burger" 值 = 堡下标(int)，必须等于客人点的那道才算对上；酱料小费可以挂在它身上
+##   "flag"   值 = bool，有就是有，不挑是哪一份
+##   "pick"   值 = 选项 id(String)，必须等于客人点的那个才算对上
+func tray_slots() -> Array:
+	return dishes.get("tray_slots", [])
+
+func tray_slot_ids() -> Array:
+	var out: Array = []
+	for s in tray_slots():
+		out.append(str((s as Dictionary).get("id", "")))
+	return out
+
+func tray_slot(id: String) -> Dictionary:
+	for s in tray_slots():
+		if str((s as Dictionary).get("id", "")) == id:
+			return s
+	return {}
+
+func tray_slot_kind(id: String) -> String:
+	return str(tray_slot(id).get("kind", "flag"))
+
+## 那一种 kind=burger 的槽位。组装台和烤架天生只做堡这一件，取它的 id 从这儿走，
+## 不在代码里写死 "burger" 这个字符串。
+func burger_slot() -> String:
+	for s in tray_slots():
+		if str((s as Dictionary).get("kind", "")) == "burger":
+			return str((s as Dictionary).get("id", ""))
+	return ""
+
+## 小菜定义（炸鸡腿/蛋炒饭都在这）。`tray_slots` 里 kind=flag 的那几件，
+## 小票上显示什么名字就读这里的 name。
+func side(id: String) -> Dictionary:
+	return dishes.get("sides", {}).get(id, {})
+
+
+## 某一槽位"没有这一件"时的取值。Customer 和 DaySim 以前各自手写一遍这个 match，
+## 泛化之后只留这一份。
+func tray_blank(id: String) -> Variant:
+	match tray_slot_kind(id):
+		"burger":
+			return -1
+		"pick":
+			return ""
+		_:
+			return false
+
+## 哪一件背着酱料小费（现在是堡）。把它做成配置而不是写死"burger"，
+## 否则"能加酱的东西"永远只有堡一种，将来给小菜加酱就得再翻一遍代码。
+func tip_slot() -> String:
+	for s in tray_slots():
+		if bool((s as Dictionary).get("carries_tip", false)):
+			return str((s as Dictionary).get("id", ""))
+	return ""
+
+## 空荷叶的初值。键的插入顺序和泛化前那份字面量保持一致（burger, fries, drink, burger_tip），
+## 免得有谁按 keys() 的顺序取第一件。
+func empty_tray() -> Dictionary:
+	var out := {}
+	for id in tray_slot_ids():
+		out[str(id)] = tray_blank(str(id))
+	var ts := tip_slot()
+	if ts != "":
+		out[ts + "_tip"] = 0
+	return out
+
+
 # ---------- 顾客 ----------
 func species(idx: int) -> Dictionary:
 	var list: Array = customers.get("species", [])

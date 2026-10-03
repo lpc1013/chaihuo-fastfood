@@ -170,6 +170,8 @@ func _run_test_mode() -> void:
 			script_path = "res://tests/music_check.gd"
 		"chapter":
 			script_path = "res://tests/chapter_check.gd"
+		"trace":
+			script_path = "res://tests/trace_check.gd"
 		"perf":
 			script_path = "res://tests/perf_check.gd"
 		"envcheck":

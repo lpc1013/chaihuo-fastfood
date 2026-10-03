@@ -205,7 +205,7 @@
  ],
  "sides": {
   "fries": {
-   "name": "薯条",
+   "name": "炸薯条",
    "art": "food/food_fries",
    "cost": 3,
    "unlock_day": 1
@@ -231,6 +231,21 @@
    "station": "wok"
   }
  },
+ "tray_slots": [
+  {
+   "id": "burger",
+   "kind": "burger",
+   "carries_tip": true
+  },
+  {
+   "id": "fries",
+   "kind": "flag"
+  },
+  {
+   "id": "drink",
+   "kind": "pick"
+  }
+ ],
  "sauce_unlock_day": 1,
  "sauces": [
   {

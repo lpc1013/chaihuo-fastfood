@@ -4,7 +4,7 @@
 # （records.gd 里 items 类型不对，_draw_order_panel 每帧抛错 45 次，autotest 报 0 fail）。
 # 这个包装把日志里的错误数当成退出码的一部分。
 #
-# 用法: tools/verify.sh smoke|border|autotest|soak|chapter|artcheck|music|envcheck|probe
+# 用法: tools/verify.sh smoke|border|autotest|soak|chapter|trace|artcheck|music|envcheck|probe
 #       tools/verify.sh --pkg smoke      # 跑导出包里的自检
 set -u
 cd "$(dirname "$0")/.." || exit 3
@@ -18,7 +18,7 @@ if [ "$MODE" = "--pkg" ]; then PKG_RUN=1; MODE="${2:-smoke}"; fi
 
 # autotest/border/soak 会读 viewport 纹理截图，无头下取不到帧，必须带窗口跑
 case "$MODE" in
-	artcheck|smoke|chapter|music|envcheck|probe|persist_write|persist_read) HEADLESS="--headless" ;;
+	artcheck|smoke|chapter|trace|music|envcheck|probe|persist_write|persist_read) HEADLESS="--headless" ;;
 	*) HEADLESS="" ;;
 esac
 
