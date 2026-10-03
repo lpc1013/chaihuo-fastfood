@@ -1,0 +1,329 @@
+{
+ "assets/art/backgrounds/bg_play_full.png": {
+  "src": "assets/incoming/R_props/hd/plate_bare_2.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/characters/chef_idle.png": {
+  "src": "assets/incoming/N_refstyle/hd/chef_idle_2.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/chef_smirk.png": {
+  "src": "assets/incoming/N_refstyle/hd/chef_idle_2.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/full_rabbit.png": {
+  "src": "assets/incoming/N_refstyle/hd/cust_rabbit2_1.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/full_fox.png": {
+  "src": "assets/incoming/N_refstyle/hd/cust_fox2_1.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/full_hippo.png": {
+  "src": "assets/incoming/N_refstyle/hd/cust_hippo2_1.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/full_cat.png": {
+  "src": "assets/incoming/N_refstyle/hd/cust_cat2_1.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/characters/full_bear.png": {
+  "src": "assets/incoming/N_refstyle/hd/cust_bear2_1.png",
+  "key": "green",
+  "h": 760
+ },
+ "assets/art/ingredients/ing_bun_b.png": {
+  "src": "assets/incoming/N_refstyle/ig_bun_b_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/ingredients/ing_bun_t.png": {
+  "src": "assets/incoming/N_refstyle/ig_bun_t_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/ingredients/ing_lettuce.png": {
+  "src": "assets/incoming/N_refstyle/ig_lettuce_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_tomato.png": {
+  "src": "assets/incoming/N_refstyle/ig_tomato_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_cheese.png": {
+  "src": "assets/incoming/N_refstyle/ig_cheese_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_patty.png": {
+  "src": "assets/incoming/N_refstyle/ig_patty_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/food/food_fries.png": {
+  "src": "assets/incoming/N_refstyle/fd_fries_1.png",
+  "key": "white",
+  "h": 260
+ },
+ "assets/art/ui/avatar_frame.png": {
+  "src": "assets/incoming/N_refstyle/ui_frame_1.png",
+  "key": "green",
+  "h": 320,
+  "holes": true
+ },
+ "assets/art/ui/button_round.png": {
+  "src": "assets/incoming/N_refstyle/ui_button_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/ui/close_button.png": {
+  "src": "assets/incoming/N_refstyle/ui_close_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/ui/plaque.png": {
+  "src": "assets/incoming/N_refstyle/ui_plaque_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/backgrounds/bg_title.png": {
+  "src": "assets/incoming/N_refstyle/hd/bg_title2_1.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/backgrounds/bg_mystery.png": {
+  "src": "assets/incoming/N_refstyle/hd/bg_mystery2_1.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/backgrounds/bg_shop.png": {
+  "src": "assets/incoming/N_refstyle/hd/bg_shop_1.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/ui/book_bg.png": {
+  "src": "assets/incoming/N_refstyle/hd/bg_book_1.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/ui/map_bg.png": {
+  "src": "assets/incoming/N_refstyle/hd/bg_map_1.png",
+  "key": "none",
+  "w": 1536,
+  "h": 864
+ },
+ "assets/art/food/food_burger_classic.png": {
+  "src": "assets/incoming/N_refstyle/fd_burger_classic_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/food_burger_double.png": {
+  "src": "assets/incoming/N_refstyle/fd_burger_double_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/food_burger_veggie.png": {
+  "src": "assets/incoming/N_refstyle/fd_burger_veggie_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/food_cola.png": {
+  "src": "assets/incoming/N_refstyle/fd_cola_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ui/ticket.png": {
+  "src": "assets/incoming/N_refstyle/ui_ticket_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/ui/sc_ketchup.png": {
+  "src": "assets/incoming/R_props/sc_ketchup_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/ui/sc_mayo.png": {
+  "src": "assets/incoming/R_props/sc_mayo_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/ui/sc_oil.png": {
+  "src": "assets/incoming/R_props/sc_oil_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/ui/sc_jar.png": {
+  "src": "assets/incoming/R_props/sc_jar_1.png",
+  "key": "green",
+  "h": 220
+ },
+ "assets/art/kitchen/pr_basket.png": {
+  "src": "assets/incoming/R_props/pr_basket_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/ingredients/ing_onion.png": {
+  "src": "assets/incoming/R_props/ig_onion_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_bacon.png": {
+  "src": "assets/incoming/R_props/ig_bacon_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_egg.png": {
+  "src": "assets/incoming/R_props/ig_egg_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/ing_pickle.png": {
+  "src": "assets/incoming/R_props/ig_pickle_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ui/tag.png": {
+  "src": "assets/incoming/S_ui/ui_tag_1.png",
+  "key": "green",
+  "h": 150
+ },
+ "assets/art/ui/bar_track.png": {
+  "src": "assets/incoming/S_ui/ui_bar_1.png",
+  "key": "green",
+  "h": 70
+ },
+ "assets/art/ui/bar_fill.png": {
+  "src": "assets/incoming/S_ui/ui_fill_1.png",
+  "key": "green",
+  "h": 70
+ },
+ "assets/art/ui/chip.png": {
+  "src": "assets/incoming/S_ui/ui_chip_1.png",
+  "key": "green",
+  "h": 110
+ },
+ "assets/art/kitchen/flame.png": {
+  "src": "assets/incoming/S_ui/fx_flame_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/fx/knife.png": {
+  "src": "assets/incoming/S_ui/fx_knife_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/ingredients/pt_raw.png": {
+  "src": "assets/incoming/S_ui/pt_patty_raw_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/pt_cooked.png": {
+  "src": "assets/incoming/S_ui/pt_patty_cooked_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/ingredients/pt_burnt.png": {
+  "src": "assets/incoming/S_ui/pt_patty_burnt_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/characters/chef_shock.png": {
+  "src": "assets/incoming/T_more/chef_shock2_1.png",
+  "key": "green",
+  "h": 620
+ },
+ "assets/art/characters/chef_side.png": {
+  "src": "assets/incoming/T_more/chef_side2_1.png",
+  "key": "green",
+  "h": 620
+ },
+ "assets/art/characters/full_mystery.png": {
+  "src": "assets/incoming/T_more/cust_mystery2_1.png",
+  "key": "green",
+  "h": 700
+ },
+ "assets/art/ui/bubble.png": {
+  "src": "assets/incoming/T_more/ui_bubble_1.png",
+  "key": "green",
+  "h": 240
+ },
+ "assets/art/ui/ticket_paper.png": {
+  "src": "assets/incoming/T_more/ui_ticket_1.png",
+  "key": "green",
+  "h": 240
+ },
+ "assets/art/ui/focus.png": {
+  "src": "assets/incoming/T_more/ui_focus_1.png",
+  "key": "green",
+  "h": 420
+ },
+ "assets/art/ui/dialog.png": {
+  "src": "assets/incoming/U_panels/hd/ui_dialog_2.png",
+  "key": "green",
+  "h": 340
+ },
+ "assets/art/ui/panel.png": {
+  "src": "assets/incoming/U_panels/hd/ui_panel_4.png",
+  "key": "green",
+  "h": 780
+ },
+ "assets/art/ingredients/ing_potato.png": {
+  "src": "assets/incoming/V_drink/pt_potato_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/rail/rl_potato.png": {
+  "src": "assets/incoming/V_drink/pt_potato_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/drink_cola.png": {
+  "src": "assets/incoming/V_drink/cup_cola_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/drink_juice.png": {
+  "src": "assets/incoming/V_drink/cup_juice_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/drink_lemon.png": {
+  "src": "assets/incoming/V_drink/cup_lemon_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/food/cup_empty.png": {
+  "src": "assets/incoming/V_drink/cup_empty_1.png",
+  "key": "green",
+  "h": 300
+ },
+ "assets/art/kitchen/pr_machine.png": {
+  "src": "assets/incoming/V_drink/pr_machine_1.png",
+  "key": "green",
+  "h": 520
+ },
+ "assets/art/fx/hand.png": {
+  "src": "assets/incoming/V_drink/fx_hand_1.png",
+  "key": "green",
+  "h": 260
+ },
+ "assets/art/food/food_burger_family.png": {
+  "src": "assets/incoming/AI_family2/burger_family_4.png",
+  "key": "green",
+  "h": 300
+ }
+}

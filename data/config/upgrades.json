@@ -1,0 +1,53 @@
+{
+  "upgrades": [
+    {
+      "id": "grill3",
+      "name": "加装第三眼烤架",
+      "desc": "烤架升级为 3 眼，同时煎更多肉饼。",
+      "cost": 60,
+      "effects": { "grill_slots_add": 1 }
+    },
+    {
+      "id": "stove",
+      "name": "猛火灶台",
+      "desc": "炉火消耗降 35%，烹饪提速 10%。",
+      "cost": 55,
+      "effects": { "fire_decay_mult": 0.65, "cook_speed_mult": 1.1 }
+    },
+    {
+      "id": "heatlamp",
+      "name": "保温灯",
+      "desc": "顾客耐心流失速度 -15%。",
+      "cost": 70,
+      "effects": { "patience_decay_mult": 0.85 }
+    },
+    {
+      "id": "goldtray",
+      "name": "金边托盘",
+      "desc": "每成功出餐一笔，小费额外 +2。",
+      "cost": 80,
+      "effects": { "tip_flat_bonus": 2 }
+    },
+    {
+      "id": "neonsign",
+      "name": "霓虹招牌升级",
+      "desc": "每天多接待 2 位客人。",
+      "cost": 90,
+      "effects": { "customers_per_day_add": 2 }
+    },
+    {
+      "id": "autoturn",
+      "name": "自动翻面夹",
+      "desc": "肉饼到火候自己翻面，一眼一串都省一次点击。",
+      "cost": 75,
+      "effects": { "auto_turn": 1 }
+    },
+    {
+      "id": "quickcut",
+      "name": "快刃菜板",
+      "desc": "换一副薄刃，切菜所需刀数减半。",
+      "cost": 50,
+      "effects": { "cut_need_mult": 0.5 }
+    }
+  ]
+}

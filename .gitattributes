@@ -1,0 +1,4 @@
+# 启动器给人双击运行，行尾必须钉死 CRLF。
+# LF 的 .bat 双击没有任何反应、也不报错——这是本项目真实踩过的静默故障。
+# 不写这条的话，行尾取决于克隆方的 core.autocrlf：换成 false 或在 macOS/Linux 上克隆就会变成 LF。
+*.bat text eol=crlf

@@ -1,0 +1,288 @@
+{
+ "ingredients": {
+  "bun": {
+   "name": "汉堡胚",
+   "cost": 1,
+   "cuts": 0,
+   "unlock_day": 1
+  },
+  "lettuce": {
+   "name": "生菜",
+   "cost": 1,
+   "cuts": 3,
+   "unlock_day": 1
+  },
+  "tomato": {
+   "name": "番茄",
+   "cost": 2,
+   "cuts": 2,
+   "unlock_day": 1
+  },
+  "cheese": {
+   "name": "芝士",
+   "cost": 2,
+   "cuts": 0,
+   "unlock_day": 1
+  },
+  "patty": {
+   "name": "肉饼",
+   "cost": 4,
+   "cuts": 0,
+   "unlock_day": 1
+  },
+  "fries": {
+   "name": "薯条",
+   "cost": 2,
+   "cuts": 0,
+   "unlock_day": 1
+  },
+  "drink": {
+   "name": "可乐",
+   "cost": 2,
+   "cuts": 0,
+   "unlock_day": 1
+  },
+  "onion": {
+   "name": "洋葱",
+   "cost": 2,
+   "cuts": 2,
+   "unlock_day": 3
+  },
+  "pickle": {
+   "name": "酸黄瓜",
+   "cost": 2,
+   "cuts": 1,
+   "unlock_day": 3
+  },
+  "bacon": {
+   "name": "培根",
+   "cost": 5,
+   "cuts": 0,
+   "unlock_day": 5
+  },
+  "egg": {
+   "name": "煎蛋",
+   "cost": 3,
+   "cuts": 0,
+   "unlock_day": 5
+  },
+  "potato": {
+   "name": "土豆",
+   "cost": 2,
+   "cuts": 0,
+   "unlock_day": 1
+  }
+ },
+ "start_inventory": {
+  "bun": 20,
+  "lettuce": 10,
+  "tomato": 10,
+  "cheese": 10,
+  "patty": 10,
+  "onion": 10,
+  "potato": 10,
+  "pickle": 10,
+  "bacon": 10,
+  "egg": 10,
+  "drink": 10
+ },
+ "shelf_order": [
+  "bun",
+  "lettuce",
+  "tomato",
+  "cheese",
+  "patty",
+  "onion",
+  "potato",
+  "pickle",
+  "bacon",
+  "egg"
+ ],
+ "shop_extra": [
+  "drink"
+ ],
+ "burgers": [
+  {
+   "id": "classic",
+   "name": "经典芝士堡",
+   "short": "芝士堡",
+   "price": 18,
+   "stack": [
+    "bun",
+    "lettuce",
+    "cheese",
+    "patty",
+    "bun"
+   ],
+   "unlock_day": 1,
+   "unlock_rep": 0
+  },
+  {
+   "id": "veggie",
+   "name": "田园鲜蔬堡",
+   "short": "鲜蔬堡",
+   "price": 22,
+   "stack": [
+    "bun",
+    "lettuce",
+    "tomato",
+    "cheese",
+    "patty",
+    "bun"
+   ],
+   "unlock_day": 2,
+   "unlock_rep": 3
+  },
+  {
+   "id": "double",
+   "name": "双层至尊堡",
+   "short": "至尊堡",
+   "price": 32,
+   "stack": [
+    "bun",
+    "lettuce",
+    "patty",
+    "cheese",
+    "tomato",
+    "patty",
+    "bun"
+   ],
+   "unlock_day": 5,
+   "unlock_rep": 4
+  },
+  {
+   "id": "bacon",
+   "name": "柴火培根蛋堡",
+   "short": "培根蛋堡",
+   "price": 30,
+   "unlock_day": 5,
+   "unlock_rep": 4,
+   "stack": [
+    "bun",
+    "lettuce",
+    "bacon",
+    "egg",
+    "cheese",
+    "patty",
+    "bun"
+   ]
+  },
+  {
+   "id": "pickle",
+   "name": "酸笋洋葱堡",
+   "short": "酸笋堡",
+   "price": 24,
+   "unlock_day": 3,
+   "unlock_rep": 3,
+   "stack": [
+    "bun",
+    "lettuce",
+    "onion",
+    "pickle",
+    "cheese",
+    "patty",
+    "bun"
+   ]
+  },
+  {
+   "id": "family",
+   "name": "柴火全家堡",
+   "short": "全家堡",
+   "price": 36,
+   "unlock_day": 8,
+   "unlock_rep": 3,
+   "stack": [
+    "bun",
+    "lettuce",
+    "tomato",
+    "bacon",
+    "egg",
+    "cheese",
+    "patty",
+    "bun"
+   ]
+  }
+ ],
+ "sides": {
+  "fries": {
+   "name": "薯条",
+   "art": "food/food_fries",
+   "cost": 3,
+   "unlock_day": 1
+  },
+  "drink": {
+   "name": "饮料",
+   "art": "food/food_cola",
+   "cost": 2,
+   "unlock_day": 1
+  },
+  "drumstick": {
+   "name": "炸鸡腿",
+   "art": "food/food_drumstick",
+   "cost": 5,
+   "unlock_day": 15,
+   "station": "fryer"
+  },
+  "friedrice": {
+   "name": "蛋炒饭",
+   "art": "food/food_friedrice",
+   "cost": 6,
+   "unlock_day": 15,
+   "station": "wok"
+  }
+ },
+ "sauce_unlock_day": 1,
+ "sauces": [
+  {
+   "id": "ketchup",
+   "name": "番茄酱",
+   "art": "ui/sc_ketchup",
+   "tip_bonus": 3
+  },
+  {
+   "id": "mayo",
+   "name": "蛋黄酱",
+   "art": "ui/sc_mayo",
+   "tip_bonus": 3
+  },
+  {
+   "id": "oil",
+   "name": "香料油",
+   "art": "ui/sc_oil",
+   "tip_bonus": 2
+  },
+  {
+   "id": "pickles",
+   "name": "腌椒罐",
+   "art": "ui/sc_jar",
+   "tip_bonus": 4
+  }
+ ],
+ "drinks": [
+  {
+   "id": "cola",
+   "name": "可乐",
+   "art": "food/drink_cola",
+   "jar": 0.2
+  },
+  {
+   "id": "juice",
+   "name": "橙汁",
+   "art": "food/drink_juice",
+   "jar": 0.5
+  },
+  {
+   "id": "lemon",
+   "name": "柠檬茶",
+   "art": "food/drink_lemon",
+   "jar": 0.8
+  }
+ ],
+ "stations": {
+  "wok": {
+   "name": "台灶炒锅",
+   "art": "kitchen/pr_stove_wok",
+   "unlock_day": 15
+  }
+ }
+}

@@ -1,0 +1,27 @@
+{
+  "fire_max": 100.0,
+  "fire_start": 80.0,
+  "grace_seconds": 20.0,
+  "decay_per_sec": 0.75,
+  "low_threshold": 35.0,
+  "low_speed_mult": 0.6,
+  "min_to_cook": 8.0,
+  "wood_start": 2,
+  "wood_max": 10,
+  "add_wood_fire": 22.0,
+  "chop": {
+    "rounds": 3,
+    "round_seconds": 1.5,
+    "hit_zone": [0.32, 0.68],
+    "hit_wood": 2,
+    "miss_wood": 1,
+    "swing_seconds": 0.13,
+    "bite_seconds": 0.1,
+    "lift_seconds": 0.3
+  },
+  "hints": {
+    "low_text": "炉火弱了，点「添柴」续火；柴不够就「劈柴」。",
+    "no_wood_text": "柴没了，先去劈柴。",
+    "min_text": "火候不够，先添柴再生火做饭。"
+  }
+}
