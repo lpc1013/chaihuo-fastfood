@@ -37,7 +37,7 @@ var queue: Array = []
 var leaving: Array = []
 
 var grill: Array = []
-var fryer: Dictionary = {"p": -1.0, "warned": false}
+var fryer: Array = []
 var drink: Dictionary = {"p": -1.0}
 var cooked := 0
 var assembly: Array = []
@@ -93,7 +93,7 @@ func start(p_day: int, seed_value: int = -1) -> void:
 	queue = []
 	leaving = []
 	_setup_grill()
-	fryer = {"p": -1.0, "warned": false}
+	fryer = _new_fryer()
 	drink = {"p": -1.0}
 	cooked = 0
 	assembly = []
@@ -385,12 +385,15 @@ func _tick_stations(dt: float) -> void:
 	var fcfg := Config.cook("fryer")
 	var full_f := float(fcfg.get("full_seconds", 5.0))
 	var burn_f := float(fcfg.get("burn_auto", 1.35))
-	if float(fryer["p"]) >= 0.0:
-		fryer["p"] = float(fryer["p"]) + dt / full_f * _speed_hot() * GameState.effect_mult("cook_speed_mult")
-		if float(fryer["p"]) >= burn_f:
-			fryer["p"] = burn_f
-			if not bool(fryer["warned"]):
-				fryer["warned"] = true
+	for b in fryer:
+		var bd: Dictionary = b
+		if float(bd["p"]) < 0.0:
+			continue
+		bd["p"] = float(bd["p"]) + dt / full_f * _speed_hot() * GameState.effect_mult("cook_speed_mult")
+		if float(bd["p"]) >= burn_f:
+			bd["p"] = burn_f
+			if not bool(bd["warned"]):
+				bd["warned"] = true
 				_snark("fryburnt")
 				sfx_requested.emit("burnt")
 	var dcfg := Config.cook("drink")
@@ -569,9 +572,55 @@ func tap_grill(i: int) -> void:
 		_snark("earlyflip")
 		shake_requested.emit()
 
+## 每只炸篮一份状态。篮子数来自 `economy.cooking.fryer.baskets`（现在是 1）。
+## 泛化到多篮之前这里是单个 Dictionary，读它的人到处写 `fryer["p"]`。
+func _new_fryer() -> Array:
+	var out: Array = []
+	for i in Config.fryer_baskets():
+		out.append({"p": -1.0, "warned": false})
+	return out
+
+func fryer_p(i: int = 0) -> float:
+	if i < 0 or i >= fryer.size():
+		return -1.0
+	return float((fryer[i] as Dictionary)["p"])
+
+## 有没有哪只篮子正在炸（HUD 那枚脉冲用的就是这个，不是"0 号篮"）
+func fryer_busy() -> bool:
+	for b in fryer:
+		if float((b as Dictionary)["p"]) >= 0.0:
+			return true
+	return false
+
+## 这一次点击该落在哪只篮子：先起锅窗口内的、再糊掉的、再空篮、最后退回任何还在炸的。
+## **只有一只篮子时这四个分支必然都指到 0 号**，所以判路和泛化前那条完全一致——
+## 这是这一步能宣称"行为零变化"的依据，不是靠读代码看出来的是靠 trace 比出来的。
+func _fryer_focus() -> int:
+	var cfg := Config.cook("fryer")
+	var win: Array = cfg.get("window", [0.72, 1.0])
+	var burn_tap := float(cfg.get("burn_tap", 1.22))
+	for i in fryer.size():
+		var p := float((fryer[i] as Dictionary)["p"])
+		if p >= float(win[0]) and p <= float(win[1]):
+			return i
+	for i in fryer.size():
+		if float((fryer[i] as Dictionary)["p"]) >= burn_tap:
+			return i
+	for i in fryer.size():
+		if float((fryer[i] as Dictionary)["p"]) < 0.0:
+			return i
+	for i in fryer.size():
+		if float((fryer[i] as Dictionary)["p"]) >= 0.0:
+			return i
+	return -1
+
 func tap_fryer() -> void:
 	var cfg := Config.cook("fryer")
-	var p := float(fryer["p"])
+	var bi := _fryer_focus()
+	if bi < 0:
+		return
+	var b: Dictionary = fryer[bi]
+	var p := float(b["p"])
 	if p < 0.0:
 		if not can_cook():
 			_snark_text(str(Config.fire.get("hints", {}).get("min_text", "")))
@@ -581,12 +630,12 @@ func tap_fryer() -> void:
 			_snark("nostock")
 			shake_requested.emit()
 			return
-		fryer["p"] = 0.0
-		fryer["warned"] = false
+		b["p"] = 0.0
+		b["warned"] = false
 		sfx_requested.emit("place")
 		return
 	if p >= float(cfg.get("burn_tap", 1.22)):
-		fryer["p"] = -1.0
+		b["p"] = -1.0
 		_snark("fryburnt")
 		sfx_requested.emit("burnt")
 		return
@@ -595,7 +644,7 @@ func tap_fryer() -> void:
 		if bool(tray["fries"]):
 			_snark("trayfull")
 			return
-		fryer["p"] = -1.0
+		b["p"] = -1.0
 		tray["fries"] = true
 		sfx_requested.emit("ding")
 	elif p < float(win[0]):

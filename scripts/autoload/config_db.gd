@@ -262,6 +262,12 @@ func coins_cfg() -> Dictionary:
 func cook(key: String) -> Dictionary:
 	return economy.get("cooking", {}).get(key, {})
 
+## 炸炉有几只篮子。第三章要接炸鸡腿、要扩到 2，但那是玩法改动；
+## 现在给 1，让"多篮"这层结构先在行为中立的前提下长出来。
+func fryer_baskets() -> int:
+	return maxi(1, int(cook("fryer").get("baskets", 1)))
+
+
 # ---------- 章 ----------
 ## 进度按「章」锚定，不按天。一章多少天、叫什么，全在 economy.json 的 chapters 表里。
 ## chapters 缺席时才退回旧的 total_days（= 单章），这样老存档和用户手写的

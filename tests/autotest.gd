@@ -552,17 +552,17 @@ func run(m: Node) -> void:
 	# 炸锅动画三帧：下篮 / 浸油冒泡 / 提起沥油
 	GameState.inv_add("potato", 6)
 	late.paused = false
-	late.sim.tray = {"burger": -1, "fries": false, "drink": ""}
-	late.sim.fryer = {"p": -1.0, "warned": false}
+	late.sim.tray = Config.empty_tray()
+	late.sim.fryer = late.sim._new_fryer()
 	late.sim.wood = 6
 	late.sim.fire = 80.0
 	late.sim.tap_fryer()
 	await _wait(0.16)
-	if float(late.sim.fryer["p"]) < 0.0:
+	if late.sim.fryer_p() < 0.0:
 		fails.append("tap_fryer did not start a fry (potato stock=%d)" % GameState.inv_count("potato"))
 	await _shot("18e_fry_down")
 	await _wait(0.34)
-	late.sim.fryer["p"] = 0.85
+	late.sim.fryer[0]["p"] = 0.85
 	await _wait(0.26)
 	await _shot("18f_fry_in")
 	late.sim.tap_fryer()
@@ -571,10 +571,12 @@ func run(m: Node) -> void:
 		fails.append("lifting in-window did not put fries on the tray")
 	await _shot("18g_fry_lift")
 	# 炸糊那一支：发黑 + 冒烟，走的是 burn 分支（先清盘，否则上面那次起锅会让断言假阳）
-	late.sim.tray = {"burger": -1, "fries": false, "drink": ""}
+	late.sim.tray = Config.empty_tray()
 	# 设值和点击之间不能留帧：卡帧时 tick 会把 p 推过 burn_auto(1.35) 走自动烧糊分支，
 	# 于是 tap 命中的是"重新开炸"而不是"炸糊起锅"，断言就会偶发假阳
-	late.sim.fryer = {"p": 1.30, "warned": true}
+	late.sim.fryer = late.sim._new_fryer()
+	late.sim.fryer[0]["p"] = 1.30
+	late.sim.fryer[0]["warned"] = true
 	late.sim.tap_fryer()
 	await _wait(0.40)
 	if bool(late.sim.tray["fries"]):

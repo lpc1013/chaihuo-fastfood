@@ -32,7 +32,8 @@
       "window": [0.72, 1.0],
       "too_low": 0.72,
       "burn_tap": 1.22,
-      "burn_auto": 1.35
+      "burn_auto": 1.35,
+      "baskets": 1
     },
     "drink": {
       "full_seconds": 2.4,

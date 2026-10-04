@@ -108,7 +108,7 @@ func step(dt: float) -> void:
 	#    堡一递走闸门就落下，薯条和可乐永远不开工，整天的单全超时（trace 实测 served=0）。
 	var owner: Customer = target if target != null else _tray_owner()
 	var still_open := owner != null and not owner.got_all()
-	var fp := float(sim.fryer["p"])
+	var fp := sim.fryer_p(0)
 	if fp < 0.0:
 		if still_open and owner.wants("fries") and not bool(owner.got.get("fries", false)) \
 				and not sim.tray_has_slot("fries") and sim.can_cook():

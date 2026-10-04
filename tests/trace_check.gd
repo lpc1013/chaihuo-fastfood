@@ -184,7 +184,10 @@ func _mark(head: String, sim: DaySim = null) -> void:
 		parts.append("sauces=" + _canon(sim.sauces_used))
 		parts.append("sauce_tip=%d" % sim.sauce_tip)
 		parts.append("grill=%s" % _arr(sim.grill))
-		parts.append("fryer=" + _canon(sim.fryer))
+		# 炸炉从单槽 Dictionary 变成一篮一份的 Array，所以这里从 _canon 换成 _arr。
+		# 这是**表示层**的变化：单篮时 `{p:..,warned:..}` 变成 `[{p:..,warned:..}]`，
+		# 比对基线时把外层那对中括号规范化掉再判等，别看见这行不同就说行为变了。
+		parts.append("fryer=%s" % _arr(sim.fryer))
 		parts.append("drinking=" + _canon(sim.drink))
 		parts.append("jar=%d cooked=%d fire=%.0f wood=%d" % [sim.drink_jar, sim.cooked, sim.fire, sim.wood])
 		parts.append("q=[%s]" % " ".join(_q(sim.queue)))

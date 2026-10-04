@@ -32,6 +32,7 @@ func run(m: Node) -> void:
 	_test_burger_conservation()
 	_test_sound_levels()
 	_test_fire_system()
+	_test_fryer_baskets()
 	_test_edge_cases()
 	_test_upgrades()
 	_test_config_reload()
@@ -1434,3 +1435,51 @@ func _dump_evidence() -> void:
 	if FileAccess.file_exists(SaveManager.ledger_path()):
 		_write(dir + "/ledger.json", FileAccess.get_file_as_string(SaveManager.ledger_path()))
 	print("[evidence] saves copied to ", dir)
+
+## 炸炉的多篮路径。`economy.cooking.fryer.baskets` 现在是 **1**，也就是默认配置下
+## 第二篮永远不会被用到——不写这条，多篮那套分支就是一段谁都没跑过的代码，
+## 等第三章真扩到 2 篮时才发现它是坏的（实测把 baskets 改成 2，SimBot 仍然只看
+## 0 号篮，所以两篮同时在炸的行数是 0：结构在、没人用）。
+## 这里直接把 fryer 摆成两篮，测的就是"多篮"这套分支本身。
+func _test_fryer_baskets() -> void:
+	var c0 := checks
+	var sim := DaySim.new()
+	sim.start(3, 4003)
+	sim.fryer = [{"p": -1.0, "warned": false}, {"p": -1.0, "warned": false}]
+	GameState.inv_add("potato", 10)
+	sim.tap_fryer()
+	sim.tick(0.1)
+	check(sim.fryer_p(0) >= 0.0 and sim.fryer_p(1) < 0.0,
+		"第一次点击只该起 0 号篮（实得 p0=%.2f p1=%.2f）" % [sim.fryer_p(0), sim.fryer_p(1)])
+	sim.fryer[0]["p"] = 0.30
+	check(sim._fryer_focus() == 1, "0 号还没到起锅窗口时，点击该落到空着的 1 号篮")
+	sim.tap_fryer()
+	sim.tick(0.1)
+	check(sim.fryer_p(1) >= 0.0, "第二篮要能同时开炸，否则扩篮只是摆设")
+	var p0a := sim.fryer_p(0)
+	var p1a := sim.fryer_p(1)
+	for i in 20:
+		sim.tick(0.1)
+	check(sim.fryer_p(0) > p0a and sim.fryer_p(1) > p1a,
+		"两篮必须各自独立推进（%.2f→%.2f / %.2f→%.2f）" % [p0a, sim.fryer_p(0), p1a, sim.fryer_p(1)])
+	# 一只到窗口、一只没到：该起的是到窗口那只，另一只不许被顺手清掉
+	sim.fryer[0]["p"] = 0.55
+	sim.fryer[1]["p"] = 0.80
+	check(sim._fryer_focus() == 1, "只有 1 号在起锅窗口时该选中 1 号")
+	sim.tray = Config.empty_tray()
+	sim.tap_fryer()
+	check(sim.fryer_p(1) < 0.0 and sim.fryer_p(0) > 0.4,
+		"点一下只起锅 1 号，0 号必须还在炸（实得 p0=%.2f p1=%.2f）" % [sim.fryer_p(0), sim.fryer_p(1)])
+	check(bool(sim.tray["fries"]), "起锅那篮要把薯条放到荷叶上")
+	# 单篮时选择器必须永远指 0——这是"baskets=1 行为没变"那句结论的根据
+	var one := DaySim.new()
+	one.start(3, 4003)
+	check(one.fryer.size() == 1, "默认配置下只有一只篮子（实得 %d）" % one.fryer.size())
+	var always0 := true
+	for probe_p in [-1.0, 0.20, 0.80, 1.10, 1.30]:
+		one.fryer[0]["p"] = probe_p
+		if one._fryer_focus() != 0:
+			always0 = false
+	check(always0, "单篮时选择器对任何 p 都只能指到 0 号篮，否则泛化改了行为")
+	print("[fryer] 多篮路径判了 %d 条；配置 baskets=%d" % [checks - c0, Config.fryer_baskets()])
+

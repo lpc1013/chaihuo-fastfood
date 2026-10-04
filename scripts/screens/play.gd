@@ -596,7 +596,9 @@ func _draw_grill(rect: Rect2) -> void:
 
 
 func _draw_fryer(rect: Rect2) -> void:
-	var p := float(sim.fryer["p"])
+	# 现在只画 0 号篮。模拟层已经能挂多篮了，但"第二篮长在哪、什么时候露出来"是
+	# 画面改动（v12 底图本来就画着两只挂篮），等第三章真扩到 2 篮时再一起设计。
+	var p := sim.fryer_p(0)
 	var win: Array = Config.cook("fryer").get("window", [0.72, 1.0])
 	# 篮子在「挂架」和「油井」之间的插值位置：0=挂在后沿（背景那个姿态），1=沉进前右井
 	var k := _fry_k()
@@ -660,7 +662,7 @@ func _fry_k() -> float:
 		"up", "burn":
 			var u := clampf(fry_t / 0.62, 0.0, 1.0)
 			return 1.0 - u * u * (3.0 - 2.0 * u)
-	return 1.0 if (sim != null and float(sim.fryer["p"]) >= 0.0) else 0.0
+	return 1.0 if (sim != null and sim.fryer_busy()) else 0.0
 
 func _fry_at(rect: Rect2, f: Vector2) -> Vector2:
 	return Vector2(rect.position.x + f.x * rect.size.x, rect.position.y + f.y * rect.size.y)
@@ -670,7 +672,7 @@ func _tick_fry(delta: float) -> void:
 	if sim == null:
 		return
 	var burn_at := float(Config.cook("fryer").get("burn_tap", 1.22))
-	var fp := float(sim.fryer["p"])
+	var fp := sim.fryer_p(0)
 	if _fry_p_prev < 0.0 and fp >= 0.0:
 		fry_phase = "down"
 		fry_t = 0.0
