@@ -108,7 +108,11 @@ func step(dt: float) -> void:
 	#    堡一递走闸门就落下，薯条和可乐永远不开工，整天的单全超时（trace 实测 served=0）。
 	var owner: Customer = target if target != null else _tray_owner()
 	var still_open := owner != null and not owner.got_all()
-	var fp := sim.fryer_p(0)
+	# 炸炉能挂多篮之后，bot 不许只盯 0 号篮——否则第二篮永远是死的，
+	# "扩双篮"就只是数组长了个数。用和 tap_fryer 同一个选择器，
+	# 保证"bot 以为自己在点哪一篮"和"真点下去命中的是哪一篮"永远是同一篮。
+	# 单篮时 _fryer_focus() 对任何 p 都只能返回 0（smoke 里那条断言守着），所以行为不变。
+	var fp := sim.fryer_p(sim._fryer_focus())
 	if fp < 0.0:
 		if still_open and owner.wants("fries") and not bool(owner.got.get("fries", false)) \
 				and not sim.tray_has_slot("fries") and sim.can_cook():
