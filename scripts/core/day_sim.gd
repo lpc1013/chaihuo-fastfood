@@ -574,11 +574,20 @@ func tap_grill(i: int) -> void:
 
 ## 每只炸篮一份状态。篮子数来自 `economy.cooking.fryer.baskets`（现在是 1）。
 ## 泛化到多篮之前这里是单个 Dictionary，读它的人到处写 `fryer["p"]`。
-func _new_fryer() -> Array:
+## `item` 是这只篮现在炸的是哪样（`sides` 里的 id），空篮为 ""。
+## 以前"炸炉出来的就是薯条"是写死在函数里的，加第二样菜就得整段翻。
+func _new_fryer(count: int = -1) -> Array:
+	var n := Config.fryer_baskets() if count < 0 else count
 	var out: Array = []
-	for i in Config.fryer_baskets():
-		out.append({"p": -1.0, "warned": false})
+	for i in maxi(1, n):
+		out.append({"p": -1.0, "warned": false, "item": ""})
 	return out
+
+## 这只篮现在炸的是什么（空篮返回 ""）。视图和 bot 都从这儿取，别再猜"就是薯条"。
+func fryer_item(i: int = 0) -> String:
+	if i < 0 or i >= fryer.size():
+		return ""
+	return str((fryer[i] as Dictionary)["item"])
 
 func fryer_p(i: int = 0) -> float:
 	if i < 0 or i >= fryer.size():
@@ -614,7 +623,10 @@ func _fryer_focus() -> int:
 			return i
 	return -1
 
-func tap_fryer() -> void:
+## 点炸炉。`item` 是要下的料在 `sides` 里的 id（现在是 "fries"，将来还有 "drumstick"）。
+## 不传就是泛化前那唯一的产品：薯条。烧哪种原料由 `sides[<item>].ingredient` 说，
+## 起锅往荷叶哪一格也按 `<item>` 放——这两处以前都写死成土豆和薯条。
+func tap_fryer(item: String = "fries") -> void:
 	var cfg := Config.cook("fryer")
 	var bi := _fryer_focus()
 	if bi < 0:
@@ -626,26 +638,37 @@ func tap_fryer() -> void:
 			_snark_text(str(Config.fire.get("hints", {}).get("min_text", "")))
 			shake_requested.emit()
 			return
-		if not GameState.inv_use("potato"):
+		# 没登记原料的小菜不该"白炸"：宁可报没货，也别把空字符串喂给 inv_use
+		var ing := str(Config.side(item).get("ingredient", ""))
+		if ing == "" or not GameState.inv_use(ing):
 			_snark("nostock")
 			shake_requested.emit()
 			return
 		b["p"] = 0.0
 		b["warned"] = false
+		b["item"] = item
 		sfx_requested.emit("place")
 		return
 	if p >= float(cfg.get("burn_tap", 1.22)):
 		b["p"] = -1.0
+		b["item"] = ""
 		_snark("fryburnt")
 		sfx_requested.emit("burnt")
 		return
 	var win: Array = cfg.get("window", [0.72, 1.0])
 	if p >= float(win[0]) and p <= float(win[1]):
-		if bool(tray["fries"]):
+		var it := str(b["item"])
+		if it == "":
+			# 有进度却没登记炸的是什么（手摆状态的测试、或将来漏了赋值都会到这儿）。
+			# 不拦的话下一句会往荷叶写 tray[""] = true，凭空多出一格谁也画不出来的东西。
+			b["p"] = -1.0
+			return
+		if bool(tray.get(it, false)):
 			_snark("trayfull")
 			return
 		b["p"] = -1.0
-		tray["fries"] = true
+		b["item"] = ""
+		tray[it] = true
 		sfx_requested.emit("ding")
 	elif p < float(win[0]):
 		shake_requested.emit()

@@ -1445,12 +1445,15 @@ func _test_fryer_baskets() -> void:
 	var c0 := checks
 	var sim := DaySim.new()
 	sim.start(3, 4003)
-	sim.fryer = [{"p": -1.0, "warned": false}, {"p": -1.0, "warned": false}]
+	# 显式要两只篮子，不看配置——这条测的就是"多篮"本身，配置现在是 1。
+	sim.fryer = sim._new_fryer(2)
 	GameState.inv_add("potato", 10)
 	sim.tap_fryer()
 	sim.tick(0.1)
 	check(sim.fryer_p(0) >= 0.0 and sim.fryer_p(1) < 0.0,
 		"第一次点击只该起 0 号篮（实得 p0=%.2f p1=%.2f）" % [sim.fryer_p(0), sim.fryer_p(1)])
+	check(sim.fryer_item(0) == "fries" and sim.fryer_item(1) == "",
+		"篮子要自己记着在炸什么（实得 0 号=%s 1 号=%s）" % [sim.fryer_item(0), sim.fryer_item(1)])
 	sim.fryer[0]["p"] = 0.30
 	check(sim._fryer_focus() == 1, "0 号还没到起锅窗口时，点击该落到空着的 1 号篮")
 	sim.tap_fryer()
@@ -1471,6 +1474,7 @@ func _test_fryer_baskets() -> void:
 	check(sim.fryer_p(1) < 0.0 and sim.fryer_p(0) > 0.4,
 		"点一下只起锅 1 号，0 号必须还在炸（实得 p0=%.2f p1=%.2f）" % [sim.fryer_p(0), sim.fryer_p(1)])
 	check(bool(sim.tray["fries"]), "起锅那篮要把薯条放到荷叶上")
+	check(sim.fryer_item(1) == "", "起锅之后那只篮要清空登记，否则下一锅会沿用上一锅的东西")
 	# 单篮时选择器必须永远指 0——这是"baskets=1 行为没变"那句结论的根据
 	var one := DaySim.new()
 	one.start(3, 4003)

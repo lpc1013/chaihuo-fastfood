@@ -207,6 +207,7 @@
   "fries": {
    "name": "炸薯条",
    "art": "food/food_fries",
+   "ingredient": "potato",
    "cost": 3,
    "unlock_day": 1
   },
