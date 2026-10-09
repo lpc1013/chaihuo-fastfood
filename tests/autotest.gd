@@ -335,25 +335,45 @@ func run(m: Node) -> void:
 
 	play._activate({"id": "fire_chop"}, Vector2.ZERO)
 	await _wait(0.45)
+	# 这张图叫 09_chop_overlay，就得先证明劈柴面板真的开着——不然它拍到的是营业台，
+	# 而测试照样绿（教学那段就是这么红过一次：少了 else，整块静默跳过）。
+	var chop_open := main.overlay != null \
+		and str((main.overlay as Node).get_script().resource_path).ends_with("ov_chop.gd")
+	if not chop_open:
+		fails.append("劈柴面板没开起来，09 那四张图整块没测到（overlay=%s）" % str(main.overlay))
 	await _shot("09_chop_overlay")
 	var ov = main.overlay
-	if ov != null and ov.has_method("debug_pose"):
+	# `if ov.has_method(...)` 不写 else，方法一改名这三帧就静默消失、整链照报绿。
+	# 所以按"实际拍了几帧"判，而不是"看起来跑了"。
+	var poses := 0
+	if chop_open and ov.has_method("debug_pose"):
 		ov.debug_pose("swing")
 		await _wait(0.06)
 		await _shot("09b_chop_swing")
+		poses += 1
 		ov.debug_pose("split")
 		await _wait(0.06)
 		await _shot("09c_chop_split")
+		poses += 1
 		ov.debug_pose("miss")
 		await _wait(0.06)
 		await _shot("09d_chop_miss")
-	if ov != null and ov.has_method("press_at"):
+		poses += 1
+	if chop_open and poses != 3:
+		fails.append("劈柴三帧只拍了 %d 帧——debug_pose 改名的话这里会先红，不会再静默少图" % poses)
+	var presses := 0
+	if chop_open and ov.has_method("press_at"):
 		ov.press_at(0.5)
 		await _wait(0.75)
+		presses += 1
 		ov.press_at(0.5)
 		await _wait(0.75)
+		presses += 1
 		ov.press_at(0.12)
 		await _wait(0.75)
+		presses += 1
+	if chop_open and presses != 3:
+		fails.append("劈柴只挥了 %d 斧（应为 3），下面那几条轮数/柴数断言的前提不成立" % presses)
 	await _wait(2.2)
 	if ov != null:
 		if ov.round_idx < 3:
