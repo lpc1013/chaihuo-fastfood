@@ -943,6 +943,11 @@ func _settle_order(c: Customer) -> void:
 	served += 1
 	order_seq += 1
 	GameState.add_rep(float(Config.economy.get("rep_gain_per_serve", 0.15)))
+	# 图鉴打勾：这道菜**成功出过餐**了。第一次做出来要单独说一声——
+	# 获得型反馈走 `menu_notice_requested` 那条中上方堆叠淡出的通道
+	# （和"今天新菜上菜单""声望升星"同一条），别新造一套浮层。
+	if GameState.mark_dish_done(c.burger_idx()):
+		menu_notice_requested.emit(Config.ui("dish_done_fmt") % str(Config.burger(c.burger_idx()).get("name", "")))
 	var pop_text := "+%d" % total
 	if combo_bonus > 0:
 		pop_text += "  连击x%d" % combo

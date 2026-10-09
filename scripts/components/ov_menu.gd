@@ -85,6 +85,11 @@ func _draw_page(page: Rect2, burgers: Array, pi: int) -> void:
 		UiKit.draw_text(self, Vector2(tx, ry + 28), str(b.get("name", "")), 17, ink, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		UiKit.draw_text_right(self, rx, ry + 28, gate, 15,
 			UiKit.GOLD if not locked else UiKit.INK_FAINT, true)
+		# 做过的菜在图上盖一枚绿勾。已做过又被声望门槛锁回去的菜也照样留着——
+		# 那记勾记的是"你确实做出来过"，是事实，不是当前可点状态。
+		if GameState.dish_done(str(b.get("id", ""))):
+			var r := maxf(7.0, isz * 0.22)
+			_draw_done_stamp(page.position.x + 10.0 + isz - r * 0.34, ry + 6.0 + r * 0.34, r, not locked)
 		var stack: Array = b.get("stack", [])
 		var area_top := ry + 38.0
 		for j in stack.size():
@@ -96,6 +101,17 @@ func _draw_page(page: Rect2, burgers: Array, pi: int) -> void:
 				Color(1, 1, 1, 0.5) if locked else Color.WHITE)
 			if j < stack.size() - 1 and col < per - 1:
 				UiKit.draw_text_centered(self, ix + cs + 3.5, iy + cs * 0.72, "+", 14, UiKit.INK_FAINT)
+
+## 一枚绿勾章。**用 draw_line 画，不是打 "✓" 字符**——主题字体不一定有 U+2713，
+## 缺字会静默画成豆腐块，而图鉴这张图没人会天天盯着看，根本发现不了。
+func _draw_done_stamp(cx: float, cy: float, r: float, bright: bool) -> void:
+	draw_circle(Vector2(cx, cy), r * 1.06, Color(0.98, 0.95, 0.86, 0.92))
+	draw_circle(Vector2(cx, cy), r * 0.9,
+		Color(0.24, 0.55, 0.26, 0.97) if bright else Color(0.44, 0.50, 0.44, 0.72))
+	var w := maxf(1.8, r * 0.26)
+	var ink := Color(0.99, 0.99, 0.95, 1.0)
+	draw_line(Vector2(cx - r * 0.46, cy + r * 0.02), Vector2(cx - r * 0.13, cy + r * 0.38), ink, w, true)
+	draw_line(Vector2(cx - r * 0.13, cy + r * 0.38), Vector2(cx + r * 0.50, cy - r * 0.40), ink, w, true)
 
 func _btn(rect: Rect2, label: String, id: String) -> void:
 	var hovered := rect.has_point(_hover)

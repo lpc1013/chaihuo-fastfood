@@ -723,7 +723,10 @@ func _worst_case_copy() -> void:
 		% [w._hits.size(), notip.size(), ("：" + "; ".join(PackedStringArray(notip))) if not notip.is_empty() else ""])
 	if not notip.is_empty():
 		fails.append("%d 个热区没有悬停说明（划上去连框都不会出）：%s" % [notip.size(), "; ".join(PackedStringArray(notip))])
-	# 图鉴：一本摊开的书，两页五个堡一次全渲染出来（没有翻页热区）
+	# 图鉴：一本摊开的书，六只堡按 ceil(n/2) 自动分成左 3 右 3，一次全渲染出来（没有翻页热区）
+	# 显式摆"哪几道做过"：不摆的话勾要么全亮要么全不亮，量不出它画没画在对的位置上。
+	# 故意让右页也有一只做过（family）、左页有一只没做过（double）。
+	GameState.dishes_done = {"classic": 12, "veggie": 5, "family": 1}
 	main.open_overlay(load("res://scripts/components/ov_menu.gd").new())
 	await _wait(0.5)
 	await _shot("21b_copy_menu")

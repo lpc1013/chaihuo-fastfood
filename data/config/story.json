@@ -160,6 +160,7 @@
     "dayend_next": "收拾店面 · 准备打烊",
     "dayend_continue": "进入下一天",
     "dayend_chapter_fmt": "第%s章到此收摊，明天对账。",
+    "dish_done_fmt": "第一次做出%s，图鉴上给它盖了个勾",
     "served": "成功出餐",
     "perfect": "完美出餐",
     "missed": "流失客人",

@@ -22,6 +22,30 @@ var upgrades: Dictionary = {}
 var inventory: Dictionary = {}
 var muted := false
 var shop_spent_pending := 0
+## 每道菜**成功出过餐**没有：键是 dishes.json 里 burgers[].id，值是做过多少次。
+## 用 id 不用下标——将来在中间插一道菜，下标会把勾打到别的堡上。
+## 图鉴靠它给做过的菜盖一枚绿勾（见 ov_menu._draw_done_stamp）。
+var dishes_done: Dictionary = {}
+
+## 记一次"这道菜做出来了"。返回 true 表示是**第一次**做出来（调用方据此弹一条获得型反馈）。
+func mark_dish_done(burger_idx: int) -> bool:
+	var id := str(Config.burger(burger_idx).get("id", ""))
+	if id == "":
+		return false
+	var n := int(dishes_done.get(id, 0))
+	dishes_done[id] = n + 1
+	return n == 0
+
+func dish_done(id: String) -> bool:
+	return int(dishes_done.get(id, 0)) > 0
+
+func dishes_done_count() -> int:
+	var n := 0
+	for k in dishes_done.keys():
+		if int(dishes_done[k]) > 0:
+			n += 1
+	return n
+
 
 func initialize_new() -> void:
 	coins = int(Config.economy.get("start_coins", 0))
@@ -38,6 +62,7 @@ func initialize_new() -> void:
 	inventory = Config.start_inventory()
 	muted = false
 	shop_spent_pending = 0
+	dishes_done = {}
 
 func reset_for_new_game() -> void:
 	initialize_new()
@@ -155,7 +180,8 @@ func to_save_dict() -> Dictionary:
 		"upgrades": upgrades.duplicate(),
 		"inventory": inventory.duplicate(),
 		"muted": muted,
-		"shop_spent_pending": shop_spent_pending
+		"shop_spent_pending": shop_spent_pending,
+		"dishes_done": dishes_done.duplicate()
 	}
 
 func apply_save_dict(d: Dictionary) -> void:
@@ -175,6 +201,20 @@ func apply_save_dict(d: Dictionary) -> void:
 	upgrades = d.get("upgrades", {}).duplicate()
 	muted = bool(d.get("muted", muted))
 	shop_spent_pending = int(d.get("shop_spent_pending", 0))
+	# 磁盘上的 JSON 不保证类型（第十七轮 `player` 写成数组直接把开机弄崩过一次），
+	# 所以这里先验类型再取。类型不对就当没做过菜——勾会丢，但游戏还得能起来。
+	var dd = d.get("dishes_done", {})
+	dishes_done = {}
+	if typeof(dd) == TYPE_DICTIONARY:
+		for k in (dd as Dictionary).keys():
+			var v = (dd as Dictionary)[k]
+			var n := 0
+			if typeof(v) == TYPE_STRING:
+				n = int(str(v))
+			elif typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT:
+				n = int(v)
+			if n > 0:
+				dishes_done[str(k)] = n
 	var inv: Dictionary = d.get("inventory", {})
 	var base := Config.start_inventory()
 	for k in base.keys():

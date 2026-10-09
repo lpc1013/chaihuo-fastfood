@@ -30,6 +30,7 @@ func run(m: Node) -> void:
 	_test_coins()
 	_test_class_cache_ships()
 	_test_burger_conservation()
+	_test_dish_ticks()
 	_test_sound_levels()
 	_test_fire_system()
 	_test_fryer_baskets()
@@ -1496,4 +1497,33 @@ func _test_fryer_baskets() -> void:
 		"配置要 %d 只炸篮，可 play.gd 的 FRY_GEO 只有 %d 组坐标——加篮子得同时加 home/well，不然会画叠"
 		% [Config.fryer_baskets(), geo.size()])
 	print("[fryer] 多篮路径判了 %d 条；配置 baskets=%d，FRY_GEO 备了 %d 组坐标" % [checks - c0, Config.fryer_baskets(), geo.size()])
+
+## 图鉴打勾这条链：出餐 → 记账 → 存/读 → 类型坏了要安全退化。
+## 走 to_save_dict()/apply_save_dict() 这一对，不碰磁盘：reset_for_new_game() 里含
+## SaveManager.wipe()（第十七轮就是被它坑过一次），会把别的存档用例的夹具删掉。
+func _test_dish_ticks() -> void:
+	var c0 := checks
+	GameState.initialize_new()
+	var id0 := str(Config.burger(0).get("id", ""))
+	check(id0 != "", "burgers[0] 没有 id——勾就没有稳定的键，插一道菜会把勾打到别的堡上")
+	check(GameState.mark_dish_done(0), "第一次做出这道菜该报 true（要弹那条获得反馈）")
+	check(not GameState.mark_dish_done(0), "第二次做同一道不该再报 true，否则每单都弹一次勾")
+	check(GameState.dish_done(id0), "dish_done 读不回来")
+	check(GameState.dishes_done.has(id0) and not GameState.dishes_done.has("0"),
+		"勾要按 id 存，不是按下标")
+	var round_trip: Dictionary = GameState.to_save_dict()
+	GameState.initialize_new()
+	check(GameState.dishes_done.is_empty(), "开新档该把勾清空，不然新档一上来六只全亮")
+	GameState.apply_save_dict(round_trip)
+	check(GameState.dish_done(id0), "存一遍再读回来勾没了（to_save_dict 或 apply_save_dict 漏了一头）")
+	# 磁盘上的 JSON 不保证类型：这一条防的就是第十七轮 `player` 写成数组把开机弄崩那类事
+	GameState.apply_save_dict({"coins": 10, "dishes_done": ["classic", "veggie"]})
+	check(GameState.dishes_done.is_empty(),
+		"dishes_done 被写成数组时该整个当没做过（实得 %s），绝不能崩" % str(GameState.dishes_done))
+	GameState.apply_save_dict({"coins": 10, "dishes_done": {"classic": "3", "bacon": null}})
+	check(GameState.dish_done("classic"), "值写成字符串 \"3\" 也要认（JSON 里数字常变字符串）")
+	check(not GameState.dish_done("bacon"), "值是 null 的该当没做过，既不崩也不亮")
+	GameState.initialize_new()
+	print("[ticks] 打勾这条链判了 %d 条" % [checks - c0])
+
 
