@@ -572,15 +572,27 @@ func run(m: Node) -> void:
 	await _shot("18g_fry_lift")
 	# 炸糊那一支：发黑 + 冒烟，走的是 burn 分支（先清盘，否则上面那次起锅会让断言假阳）
 	late.sim.tray = Config.empty_tray()
-	# 设值和点击之间不能留帧：卡帧时 tick 会把 p 推过 burn_auto(1.35) 走自动烧糊分支，
-	# 于是 tap 命中的是"重新开炸"而不是"炸糊起锅"，断言就会偶发假阳
+	# 视图的动画是抓「p 从 >=0 跳到 <0」驱动的，所以设完值得**先让视图跑几帧**，
+	# 它才可能看见这个跳变、才会进 burn。以前这里设完立刻 tap，一帧都没留——
+	# 结果 18h 这张图连续若干轮拍到的都是"只有底图那只空篮"，而断言只判荷叶不判动画，
+	# 于是画面一直是错的、测试一直全绿。
+	# 但也不能留太多帧：tick 会把 p 推过 burn_auto(1.35) 走"自动烧糊"那条分支，
+	# tap 命中的就不是"炸糊起锅"了。取 1.25（> burn_tap 1.22，离 1.35 还有余量）。
 	late.sim.fryer = late.sim._new_fryer()
-	late.sim.fryer[0]["p"] = 1.30
+	late.sim.fryer[0]["p"] = 1.25
 	late.sim.fryer[0]["warned"] = true
+	late.sim.fryer[0]["item"] = "fries"
+	await _wait(0.05)
+	if late.sim.fryer_p(0) >= 1.35:
+		fails.append("等帧期间 p 被推过了 burn_auto，tap 命中的不再是炸糊起锅（p=%.2f）" % late.sim.fryer_p(0))
 	late.sim.tap_fryer()
-	await _wait(0.40)
+	await _wait(0.30)
 	if bool(late.sim.tray["fries"]):
 		fails.append("burnt fry still put fries on the tray")
+	# 动画本身也要判——不然这张图又会悄悄退回"拍了一只空篮"
+	var burn_phase := str(late._anim(0)["phase"])
+	if burn_phase != "burn":
+		fails.append("炸糊动画没在播，18h 这张图拍不到发黑和冒烟（实得 phase=%s）" % burn_phase)
 	await _shot("18h_fry_burn")
 	late.paused = true
 	late.sim.refund_assembly()

@@ -1475,15 +1475,25 @@ func _test_fryer_baskets() -> void:
 		"点一下只起锅 1 号，0 号必须还在炸（实得 p0=%.2f p1=%.2f）" % [sim.fryer_p(0), sim.fryer_p(1)])
 	check(bool(sim.tray["fries"]), "起锅那篮要把薯条放到荷叶上")
 	check(sim.fryer_item(1) == "", "起锅之后那只篮要清空登记，否则下一锅会沿用上一锅的东西")
-	# 单篮时选择器必须永远指 0——这是"baskets=1 行为没变"那句结论的根据
+	# 单篮时选择器必须永远指 0——这是"baskets=1 行为没变"那句结论的根据。
+	# 显式要一只篮子、不看配置：否则将来真把 baskets 改成 2，这两条会跟着红，
+	# 而它们红得没有道理（改配置正是那一步要做的事）。
 	var one := DaySim.new()
 	one.start(3, 4003)
-	check(one.fryer.size() == 1, "默认配置下只有一只篮子（实得 %d）" % one.fryer.size())
+	one.fryer = one._new_fryer(1)
+	check(one.fryer.size() == 1, "显式要 1 篮就该拿到 1 篮（实得 %d）" % one.fryer.size())
 	var always0 := true
 	for probe_p in [-1.0, 0.20, 0.80, 1.10, 1.30]:
 		one.fryer[0]["p"] = probe_p
 		if one._fryer_focus() != 0:
 			always0 = false
 	check(always0, "单篮时选择器对任何 p 都只能指到 0 号篮，否则泛化改了行为")
-	print("[fryer] 多篮路径判了 %d 条；配置 baskets=%d" % [checks - c0, Config.fryer_baskets()])
+	# 每加一只篮子都必须同时给一组 home/well。漏了不会报错，只会两支篮子画在同一个位置——
+	# 那正是第十九轮"两个漏勺重叠"的病。几何表在 play.gd 里，所以这条要跨文件盯住它。
+	var ps := load("res://scripts/screens/play.gd")
+	var geo: Array = ps.get_script_constant_map().get("FRY_GEO", [])
+	check(Config.fryer_baskets() <= geo.size(),
+		"配置要 %d 只炸篮，可 play.gd 的 FRY_GEO 只有 %d 组坐标——加篮子得同时加 home/well，不然会画叠"
+		% [Config.fryer_baskets(), geo.size()])
+	print("[fryer] 多篮路径判了 %d 条；配置 baskets=%d，FRY_GEO 备了 %d 组坐标" % [checks - c0, Config.fryer_baskets(), geo.size()])
 

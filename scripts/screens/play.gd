@@ -37,13 +37,24 @@ var shelf_drag_idx := -1
 # 炸锅动画：背景那台炸炉的挂架位与井位（工位格内的比例，跟着分辨率走）。
 # v12 底图**本身就画了一只空漏勺搁在后沿两池上**，实测它的中心在整屏 (41.5%, 61%)、
 # 宽约 10.5% 屏宽。挂架位就按它反推（x=(0.415-0.345)/0.145、y=(0.610-0.505)/0.255），
-# 篮子尺寸也量到同一个宽度——这样"提起来"是同一只篮子回到它本来的姿态，
-# 而不是画面里同时出现两只漏勺（用户就是指着这个问的）。
-const FRY_HOME := Vector2(0.48, 0.41)
-const FRY_WELL := Vector2(0.58, 0.56)
-var fry_phase := ""
-var fry_t := 0.0
-var _fry_p_prev := -1.0
+## 每只篮子的挂架位与油井位（都是工位格内分数，所以和分辨率无关）。
+## 0 号是按底图那只画上去的空篮量的——篮子尺寸也量到同一个宽度，这样"提起来"
+## 是同一只篮子回到它本来的姿态，而不是画面里同时出现两只漏勺（用户就是指着这个问的）。
+## **加篮子必须同时在这里加一行**：漏了就会有两支篮子画在同一个位置，那正是上面那个病。
+## smoke 里有一条闸盯着 `Config.fryer_baskets() <= FRY_GEO.size()`，漏加会当场红。
+const FRY_GEO := [
+	{"home": Vector2(0.48, 0.41), "well": Vector2(0.58, 0.56)},
+]
+## 每篮一份动画状态：phase（"" / down / up / burn）、t（本段已走秒数）、
+## p_prev（上一帧模拟层的进度，用来抓 空→有料 / 有料→空 的跳变）、
+## item（这篮下锅时炸的是什么——起锅时 sim 会把篮子清空，所以得趁还有料时抄下来）
+var fry_anim: Array = []
+
+func _anim(i: int) -> Dictionary:
+	while fry_anim.size() <= i:
+		fry_anim.append({"phase": "", "t": 0.0, "p_prev": -1.0, "item": ""})
+	return fry_anim[i]
+
 
 # ---------------- 生命周期 ----------------
 func on_enter(params: Dictionary) -> void:
@@ -62,9 +73,7 @@ func on_enter(params: Dictionary) -> void:
 		cust_x.clear()
 		popups.clear()
 		shelf_scroll = 0.0
-		fry_phase = ""
-		fry_t = 0.0
-		_fry_p_prev = -1.0
+		fry_anim.clear()
 		tray_sticky = false
 		drag_tray = false
 	else:
@@ -596,19 +605,36 @@ func _draw_grill(rect: Rect2) -> void:
 
 
 func _draw_fryer(rect: Rect2) -> void:
-	# 现在只画 0 号篮。模拟层已经能挂多篮了，但"第二篮长在哪、什么时候露出来"是
-	# 画面改动（v12 底图本来就画着两只挂篮），等第三章真扩到 2 篮时再一起设计。
+	if sim == null:
+		return
+	for i in sim.fryer.size():
+		_draw_one_basket(rect, i)
+	# 进度条目前仍只读 0 号篮。多篮时"一条总条 / 每篮一条 / 摆在哪"是第三章的构图决定，
+	# 没定之前不顺手改——改了就会动到今天的画面。
 	var p := sim.fryer_p(0)
 	var win: Array = Config.cook("fryer").get("window", [0.72, 1.0])
-	# 篮子在「挂架」和「油井」之间的插值位置：0=挂在后沿（背景那个姿态），1=沉进前右井
-	var k := _fry_k()
-	var home := _fry_at(rect, FRY_HOME)
-	var well := _fry_at(rect, FRY_WELL)
-	var burning := fry_phase == "burn"
+	_progress_bar(rect, p, float(win[0]), float(win[1]), Color("#ffd23c"))
+	_hits.append({"rect": rect, "id": "fryer"})
+
+
+## 画一只篮子：井口油面、浸油气泡、篮子本体、起锅油珠、糊了冒烟、到窗口的金色高亮。
+## 状态一律从 `_anim(i)` 和 `sim.fryer_p(i)` 取，所以两只篮子各走各的动画。
+func _draw_one_basket(rect: Rect2, i: int) -> void:
+	var p := sim.fryer_p(i)
+	var a := _anim(i)
+	var phase := str(a["phase"])
+	var ft := float(a["t"])
+	var win: Array = Config.cook("fryer").get("window", [0.72, 1.0])
+	# 篮子在「挂架」和「油井」之间的插值位置：0=挂在后沿（背景那个姿态），1=沉进油里
+	var k := _fry_k(i)
+	var g := _fry_geo(i)
+	var home := _fry_at(rect, g["home"] as Vector2)
+	var well := _fry_at(rect, g["well"] as Vector2)
+	var burning := phase == "burn"
 	var shake := 0.0
-	if fry_phase == "up" or burning:
+	if phase == "up" or burning:
 		# 提起来中段抖两下沥油
-		var s := clampf((fry_t - 0.22) / 0.34, 0.0, 1.0)
+		var s := clampf((ft - 0.22) / 0.34, 0.0, 1.0)
 		shake = sin(s * PI * 3.0) * rect.size.x * 0.045 * (1.0 - s)
 	var bp := home.lerp(well, k) + Vector2(shake, 0.0)
 	var tint := Color(0.40, 0.30, 0.24, 1.0) if burning else (
@@ -626,15 +652,16 @@ func _draw_fryer(rect: Rect2) -> void:
 				draw_circle(Vector2(oil.position.x + oil.size.x * (0.10 + 0.145 * float(bi % 6)),
 					oil.position.y + oil.size.y * (1.0 - frac)),
 					(2.4 + float(bi % 3)) * (1.0 - frac), Color(0.99, 0.93, 0.74, 0.55 * (1.0 - frac)))
-	# 空闲（锅里没东西、也不在放/捞的动画里）就根本不画我们这只：
+	# 空闲（这篮没东西、也不在放/捞的动画里）就根本不画我们这只：
 	# pr_basket 是「一篮薯条」，凭空挂在炸炉上就是玩家看到的第二只漏勺。
-	if p >= 0.0 or fry_phase != "":
+	# v12 底图本身就画着一只斜搭的空篮（量位在格内 0.48,0.42），所以这条判据必须留着。
+	if p >= 0.0 or phase != "":
 		UiKit.draw_tex_contain(self, UiKit.art("kitchen/pr_basket"),
 			Rect2(bp.x - bsz / 2.0, bp.y - bsz * 0.42, bsz, bsz * 0.84), tint)
 	# 提起/糊了时甩出的油珠：落在井口里
-	if (fry_phase == "up" or burning) and fry_t > 0.24 and fry_t < 0.60:
+	if (phase == "up" or burning) and ft > 0.24 and ft < 0.60:
 		for di in 5:
-			var dp := clampf((fry_t - 0.24 - float(di) * 0.045) / 0.22, 0.0, 1.0)
+			var dp := clampf((ft - 0.24 - float(di) * 0.045) / 0.22, 0.0, 1.0)
 			if dp <= 0.0 or dp >= 1.0:
 				continue
 			draw_circle(Vector2(bp.x + rect.size.x * (0.06 * float(di) - 0.12),
@@ -642,7 +669,7 @@ func _draw_fryer(rect: Rect2) -> void:
 				3.0 * (1.0 - dp * 0.5), Color(0.93, 0.79, 0.42, 0.8))
 	if burning:
 		for si in 3:
-			var sp := clampf((fry_t - 0.10 - float(si) * 0.12) / 0.55, 0.0, 1.0)
+			var sp := clampf((ft - 0.10 - float(si) * 0.12) / 0.55, 0.0, 1.0)
 			if sp > 0.0:
 				draw_circle(Vector2(bp.x + rect.size.x * 0.05 * float(si - 1), bp.y - bsz * (0.20 + sp * 0.55)),
 					bsz * (0.07 + sp * 0.13), Color(0.34, 0.32, 0.33, 0.42 * (1.0 - sp)))
@@ -650,47 +677,59 @@ func _draw_fryer(rect: Rect2) -> void:
 		var gp := 0.5 + 0.5 * sin(t * 8.0)
 		UiKit.draw_focus(self, Rect2(well.x - rect.size.x * 0.30, well.y - bsz * 0.40, rect.size.x * 0.60, bsz * 0.80),
 			Color(1, 0.9, 0.6, 0.45 + 0.45 * gp))
-	_progress_bar(rect, p, float(win[0]), float(win[1]), Color("#ffd23c"))
-	_hits.append({"rect": rect, "id": "fryer"})
 
-## 篮子当前位置在挂架(HOME)与油井(WELL)之间的比例：0 挂著、1 沉下去
-func _fry_k() -> float:
-	match fry_phase:
+## 第 i 只篮子当前位置在挂架(HOME)与油井(WELL)之间的比例：0 挂着、1 沉下去
+func _fry_k(i: int) -> float:
+	var a := _anim(i)
+	match str(a["phase"]):
 		"down":
-			var d := clampf(fry_t / 0.30, 0.0, 1.0)
+			var d := clampf(float(a["t"]) / 0.30, 0.0, 1.0)
 			return d * d * (3.0 - 2.0 * d)
 		"up", "burn":
-			var u := clampf(fry_t / 0.62, 0.0, 1.0)
+			var u := clampf(float(a["t"]) / 0.62, 0.0, 1.0)
 			return 1.0 - u * u * (3.0 - 2.0 * u)
-	return 1.0 if (sim != null and sim.fryer_busy()) else 0.0
+	return 1.0 if (sim != null and sim.fryer_p(i) >= 0.0) else 0.0
 
 func _fry_at(rect: Rect2, f: Vector2) -> Vector2:
 	return Vector2(rect.position.x + f.x * rect.size.x, rect.position.y + f.y * rect.size.y)
 
-## 模拟层只管逻辑，下篮/提篮这些动画状态全在视图层，靠 fryer.p 的跳变驱动
+func _fry_geo(i: int) -> Dictionary:
+	# 表比篮子短的时候退回最后一行——但那种情况 smoke 会先红，不该靠这里兜住
+	if FRY_GEO.is_empty():
+		return {"home": Vector2(0.48, 0.41), "well": Vector2(0.58, 0.56)}
+	return FRY_GEO[mini(i, FRY_GEO.size() - 1)]
+
+## 模拟层只管逻辑，下篮/提篮这些动画状态全在视图层，靠每只篮子的 p 跳变驱动。
+## 以前这里只有一份全局状态、只看 0 号篮；两篮同时炸就会有一只没有下篮动画。
 func _tick_fry(delta: float) -> void:
 	if sim == null:
 		return
 	var burn_at := float(Config.cook("fryer").get("burn_tap", 1.22))
-	var fp := sim.fryer_p(0)
-	if _fry_p_prev < 0.0 and fp >= 0.0:
-		fry_phase = "down"
-		fry_t = 0.0
-		Sfx.play("sizzle")
-	elif _fry_p_prev >= 0.0 and fp < 0.0:
-		if _fry_p_prev >= burn_at:
-			fry_phase = "burn"
-		elif sim.tray_has_slot(FRYER_SLOT):
-			fry_phase = "up"
-		else:
-			fry_phase = ""
-		fry_t = 0.0
-	_fry_p_prev = fp
-	if fry_phase == "":
-		return
-	fry_t += delta
-	if fry_t >= (0.34 if fry_phase == "down" else 0.95):
-		fry_phase = ""
+	for i in sim.fryer.size():
+		var a := _anim(i)
+		var fp := sim.fryer_p(i)
+		if fp >= 0.0:
+			# 起锅时 sim 会把篮子的 item 清空，所以"这篮炸的是什么"要趁还有料时抄下来
+			a["item"] = sim.fryer_item(i)
+		var prev := float(a["p_prev"])
+		if prev < 0.0 and fp >= 0.0:
+			a["phase"] = "down"
+			a["t"] = 0.0
+			Sfx.play("sizzle")
+		elif prev >= 0.0 and fp < 0.0:
+			if prev >= burn_at:
+				a["phase"] = "burn"
+			elif sim.tray_has_slot(str(a["item"])):
+				a["phase"] = "up"
+			else:
+				a["phase"] = ""
+			a["t"] = 0.0
+		a["p_prev"] = fp
+		if str(a["phase"]) == "":
+			continue
+		a["t"] = float(a["t"]) + delta
+		if float(a["t"]) >= (0.34 if str(a["phase"]) == "down" else 0.95):
+			a["phase"] = ""
 
 func _draw_drink(rect: Rect2) -> void:
 	var zone := _cell_zone(rect)
@@ -811,10 +850,6 @@ const TRAY_GEO := {
 ## 泛化之前就写成 堡 → 饮料 → 薯条，改成照 `tray_slots` 的顺序遍历会在"饮料和薯条
 ## 都在盘上"时提错那件。所以单独列一张表，别去复用上面的顺序。
 const GHOST_PRIORITY := ["burger", "drink", "fries"]
-
-## 炸炉产出的是哪一格。工位和它的产出物天生一对，但把这个名字集中一处——
-## 将来"炸炉扩双篮、第二篮出炸鸡腿"时，这里改一行比在动画代码里翻来覆去找强。
-const FRYER_SLOT := "fries"
 
 func _tray_x(anchor: String, off: float, ih: float, zone: Rect2) -> float:
 	match anchor:
