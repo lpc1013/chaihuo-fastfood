@@ -54,6 +54,9 @@ func run(_m: Node) -> void:
 		f.store_string(text)
 		f.close()
 		wrote = "user://trace.txt"
+	# 出餐这条链的实弹检查：前三天是真跑出来的 sim，勾必须由 _settle_order 盖上去，
+	# 不能只在 smoke 里手调 mark_dish_done。空字典＝游戏里永远不会有勾。
+	print("[trace] 实跑出餐 %d 单，打勾=%s" % [GameState.total_served, JSON.stringify(GameState.dishes_done)])
 	print("[trace] 行数=%d md5=%s 全文=%s" % [lines.size(), text.md5_text(), wrote])
 	print("============ TRACE DONE ============")
 	get_tree().quit(0)

@@ -1523,6 +1523,44 @@ func _test_dish_ticks() -> void:
 	GameState.apply_save_dict({"coins": 10, "dishes_done": {"classic": "3", "bacon": null}})
 	check(GameState.dish_done("classic"), "值写成字符串 \"3\" 也要认（JSON 里数字常变字符串）")
 	check(not GameState.dish_done("bacon"), "值是 null 的该当没做过，既不崩也不亮")
+	# ↑↑ 上面全是"直接调 mark_dish_done"的单位级断言：它绿了不代表游戏里会有勾。
+	# 真正的那一刀在 day_sim._settle_order 里——出餐时到底调没调、传的下标对不对，
+	# 只有让 sim 真跑出一次餐才验得到。这一段就是把那条链补上。
+	GameState.initialize_new()
+	_top_inventory(24)
+	var sim := DaySim.new()
+	sim.start(1, 4000 + 1)
+	var bot := SimBot.new()
+	bot.sim = sim
+	bot.miss_frac = 0.0
+	bot.aps = 3.0
+	var brng := RandomNumberGenerator.new()
+	brng.seed = 20261009
+	bot.rng = brng
+	for i in 2400:
+		bot.step(0.05)
+		sim.tick(0.05)
+		if sim.finished:
+			break
+	check(GameState.total_served > 0,
+		"这一段没真跑出餐（served=0），下面的勾断言就是空的——多半是 sim/bot 的接口变了")
+	check(not GameState.dishes_done.is_empty(),
+		"实跑出了 %d 单餐，图鉴一个勾都没落：_settle_order 里那一刀没接上" % GameState.total_served)
+	# 台账里那行的 items 是**菜名**，勾的键是 **id**：从台账反查回 id 再验，
+	# 才能抓到"下标→id 错位"这类把勾盖到别的菜上的错。
+	var served_id := ""
+	for o in sim.today_orders:
+		for it in (o as Dictionary).get("items", []):
+			for bi in Config.burger_count():
+				if str(Config.burger(bi).get("name", "")) == str(it):
+					served_id = str(Config.burger(bi).get("id", ""))
+					break
+			if served_id != "":
+				break
+		if served_id != "":
+			break
+	check(served_id == "" or GameState.dish_done(served_id),
+		"台账记的是%s这一单，勾却不在它身上（下标→id 这一跳错位了）" % served_id)
 	GameState.initialize_new()
 	print("[ticks] 打勾这条链判了 %d 条" % [checks - c0])
 
