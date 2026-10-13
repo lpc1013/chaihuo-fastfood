@@ -45,7 +45,8 @@
   },
   "chapters": [
     { "id": 1, "days": 7, "name": "一周试宴", "caption": "城南老街 · 一周路线" },
-    { "id": 2, "days": 7, "name": "试宴请柬", "caption": "城南老街 · 第二章路线" }
+    { "id": 2, "days": 7, "name": "试宴请柬", "caption": "城南老街 · 第二章路线" },
+    { "id": 3, "days": 7, "name": "油锅复燃", "caption": "城南老街 · 第三章路线" }
   ],
   "total_days": 7,
   "day_patience_scale": { "base": 0.98, "min": 0.7 },

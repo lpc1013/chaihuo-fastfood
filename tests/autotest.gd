@@ -624,42 +624,83 @@ func run(m: Node) -> void:
 	_click_hit(main.current, "tab:1")
 	await _wait(0.4)
 	await _shot("19b_shop_owned")
-	# 第二章的三屏。上面那一整块后期状态停在第 5 天，换章之后的画面一张都没盖过：
-	# 地图的第二条路线、章开场剧情（story.gd 里 scene_type=="chapter" 那一支）。
-	GameState.day = 10
-	main.goto("map", {"from": "play"})
-	await _wait(0.5)
-	await _shot("19c_map_day10_ch2")
-	# day 13 是本章最后一块路牌：六块牌面摆 6 站，未解锁的那几块是另一种画法
-	GameState.day = 13
-	main.goto("map", {"from": "play"})
-	await _wait(0.5)
-	await _shot("19d_map_day13_ch2")
-	GameState.day = 5
-	var ch2: Array = Config.chapter_intro_lines(2)
-	if ch2.is_empty():
-		fails.append("第二章没有开场剧情，那一段整条没测到")
-	else:
+	# 换章之后的画面：地图的本章路线 + 章开场剧情（story.gd 里 scene_type=="chapter" 那一支）。
+	# 这两样都**按章数循环拍**，不写死第二章——上一版写死之后第三章的六个新点位和五句开场
+	# 一个字都没进过画面；而图名里的 mood 也跟着真实 mood 走，免得"shock"那张画的其实是 smirk。
+	var ch_shots0 := shots.size()
+	for ch in range(2, Config.chapter_count() + 1):
+		var lo := Config.chapter_start_day(ch)
+		var hi := Config.chapter_end_day(ch)
+		# 本章中间一站 + 最后一块路牌（六块牌面摆 6 站，未解锁的那几块是另一种画法）
+		for d in [lo + 2, hi - 1]:
+			GameState.day = int(d)
+			main.goto("map", {"from": "play"})
+			await _wait(0.5)
+			await _shot("19c_map_day%d_ch%d" % [d, ch])
+		var lines: Array = Config.chapter_intro_lines(ch)
+		if lines.is_empty():
+			fails.append("第 %d 章没有开场剧情，那一段整条没测到" % ch)
+			continue
 		# 不传 on_done：_finish() 只在 Callable 有效时才调，留在这屏上正好接着拍
-		main.goto("story", {"lines": ch2, "scene": "chapter"})
+		main.goto("story", {"lines": lines, "scene": "chapter"})
 		if not await _await_screen("story", 6.0):
 			fails.append("章开场剧情没开出来（scene=chapter）")
-		else:
-			var st = main.current
-			await _story_settle(st)
-			await _shot("20b_story_ch2_narrator")
-			# 旁白那句不画立绘；画的是"说话人按 mood 换表情"那两帧
-			if await _story_to(st, 1) and await _story_settle(st):
-				await _shot("20c_story_ch2_side")
+			continue
+		var st = main.current
+		await _story_settle(st)
+		await _shot("20b_story_ch%d_narrator" % ch)
+		# 要拍的句子 = 每种 mood 第一次出现那一格 + 最长那一句。
+		# 只看第 0 句量不出字框溢出（第三章第 4 句 36 字，比第二章最长的一句还长 8 字）；
+		# 而 _story_to 只会往后点，所以两类目标合并成一次升序扫描。
+		var lens: Array = []
+		for l in lines:
+			lens.append(str((l as Dictionary).get("text", "")).length())
+		var want := {}
+		var seen_mood := {}
+		for i in range(1, lines.size()):
+			var md := str((lines[i] as Dictionary).get("mood", ""))
+			if md != "" and not seen_mood.has(md):
+				seen_mood[md] = true
+				want[i] = md
+		var longest: int = clampi(1, 0, lines.size() - 1)
+		for i in range(1, lines.size()):
+			if int(lens[i]) > int(lens[longest]):
+				longest = i
+		if not want.has(longest):
+			want[longest] = "len%d" % int(lens[longest])
+		var idxs: Array = want.keys()
+		idxs.sort()
+		for i in idxs:
+			var tag := str(want[i])
+			if await _story_to(st, int(i)) and await _story_settle(st):
+				await _shot("20c_story_ch%d_%s" % [ch, tag])
 			else:
-				fails.append("章开场剧情推不到第 2 句，换表情那两帧没测到")
-			if await _story_to(st, 4) and await _story_settle(st):
-				await _shot("20d_story_ch2_shock")
-			else:
-				fails.append("章开场剧情推不到最后一句")
-	main.goto("ending", {"mode": "chapter", "chapter": Config.chapter_count()})
-	await _wait(0.8)
-	await _shot("20_ending_ch2")
+				fails.append("第 %d 章开场推不到第 %d 句（%s），那一帧没测到" % [ch, int(i) + 1, tag])
+		print("[chshots] ch%d 开场 %d 句 / 最长 %d 字（第 %d 句）/ 实拍 %d 帧" % [
+			ch, lines.size(), int(lens[longest]), longest + 1, idxs.size() + 1])
+	GameState.day = 5
+	# 自报命中数：上面这一整块是"按章数循环"的，章数一旦掉回 1，它一张都不拍、还零 fail
+	# （劈柴那三帧就是这么静默消失的：74→71 张、0 fail）。
+	var ch_shot_n := shots.size() - ch_shots0
+	print("[chshots] 换章那两块画面实拍 %d 张（%d 章，每章至少 4 张）" % [
+		ch_shot_n, Config.chapter_count() - 1])
+	if ch_shot_n < (Config.chapter_count() - 1) * 4:
+		fails.append("换章画面只拍了 %d 张，少于 %d 章 × 4 —— 循环里有一步被静默跳过了" % [
+			ch_shot_n, maxi(1, Config.chapter_count() - 1)])
+	# 章末页按章数逐个拍。以前这里写的是 `chapter: Config.chapter_count()` 配一个**写死的**
+	# 文件名 "20_ending_ch2"——第三章进来之后它悄悄改拍第三章，图名还骗人是第二章。
+	# 现在图名跟着章号走，并且每拍一张前先确认那一页真的落在这一章（`_enter` 会 clamp 章号）。
+	for ch in range(1, Config.chapter_count() + 1):
+		main.goto("ending", {"mode": "chapter", "chapter": ch})
+		await _wait(0.8)
+		var cur = main.current
+		if cur == null:
+			fails.append("第 %d 章章末页没起来" % ch)
+			continue
+		if int(cur.chapter) != ch or str(cur.mode) != "chapter":
+			fails.append("章末页没真落到第 %d 章（实得 ch%s mode=%s）" % [ch, str(cur.chapter), str(cur.mode)])
+			continue
+		await _shot("20_ending_ch%d" % ch)
 	# 存档损坏那句要真看得见才叫"说得出"：load_error 只是显示用的字段，这里直接摆一个样本
 	SaveManager.load_error = "存档文件读不出来，已原样留到 save_slot1.corrupt-2026-09-30T11_22_33.json"
 	main.goto("title", {})
@@ -669,7 +710,7 @@ func run(m: Node) -> void:
 	await _worst_case_copy()
 	_finish()
 
-## 文案最坏情况：第 7 天 + 声望拉满（五道堡全部解锁，图鉴里全是长名字和满配配料链）
+## 文案最坏情况：最后一天 + 声望拉满（六道堡全部解锁，图鉴里全是长名字和满配配料链）
 ## + 台账堆到最多行。第 1 天那些画面里每条文案都还是短的，量不出溢出。
 func _worst_case_copy() -> void:
 	GameState.day = Config.total_days()

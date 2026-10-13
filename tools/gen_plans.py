@@ -38,6 +38,17 @@ PLAN = [
     {0: 3, 1: 3, 2: 4, 3: 2, 4: 2, 5: 3},
     {0: 3, 1: 4, 2: 4, 3: 2, 4: 2, 5: 3},
     {0: 2, 1: 4, 2: 4, 3: 3, 4: 2, 5: 3},
+    # 第三章（第 15~21 天）堡的种类不加（新菜是炸物，走托盘第四槽，不在这一列里），
+    # 抬难度靠两件事：人数 18→22，以及 7~8 层那四样（至尊/培根蛋/酸笋/全家）合计占比
+    # 从 61% 抬到 68%。首日 18 人 / 123 层是**故意贴着第二章末日（18 人 / 121 层）**开的——
+    # 换章第一天既不松也不断崖，smoke 那两条"换章不许掉客流""负载不许倒退"判的就是这个形状。
+    {0: 2, 1: 3, 2: 4, 3: 3, 4: 2, 5: 4},
+    {0: 2, 1: 3, 2: 4, 3: 3, 4: 2, 5: 4},
+    {0: 2, 1: 3, 2: 4, 3: 3, 4: 3, 5: 4},
+    {0: 2, 1: 3, 2: 4, 3: 4, 4: 3, 5: 4},
+    {0: 2, 1: 3, 2: 5, 3: 4, 4: 3, 5: 4},
+    {0: 2, 1: 3, 2: 5, 3: 4, 4: 3, 5: 5},
+    {0: 2, 1: 3, 2: 5, 3: 4, 4: 3, 5: 5},
 ]
 
 # 旧文件里已经手写过 sp/fries/drink 的那些天，照原样保留（经济曲线是在它们上量出来的）
@@ -49,6 +60,7 @@ NOTES = (
     "day_plans 为第 1-%d 天手工编排的客单。sp 为顾客物种序号（0兔 1狐 2河马 3猫 4熊），"
     "fries/drink 为是否加购。burger 为汉堡序号（0经典 1鲜蔬 2至尊 3培根蛋 4酸笋 5全家），"
     "每行只出现该天 dishes.json unlock_day 已达标的堡，六道堡在第二章内全部有真实点单；"
+    "第三章（第 15~21 天）不加新堡——那一周的新菜是炸物，走托盘第四槽，不占这一列；"
     "每种的落位由 (i+0.5)*n/k 均匀铺开，避免难单全堆在收尾。"
     "第 1-7 天的 sp/fries/drink 沿用开店首周的原值，第 8 天起由 tools/gen_plans.py 的"
     "确定性公式生成（无随机种子，跑两次一致）。" % len(PLAN)
@@ -119,9 +131,13 @@ def main() -> int:
     seen = set(i for p in PLAN for i in p)
     missing = [burgers[i]["id"] for i in range(len(burgers)) if i not in seen]
     print("\n".join(lines))
-    print("周流水: 一章 %d / 二章 %d" % (
-        sum(sum(price[i] * c for i, c in counts.items()) for counts in PLAN[:7]),
-        sum(sum(price[i] * c for i, c in counts.items()) for counts in PLAN[7:])))
+    # 一章 7 天是 economy.json 里写死的，这里按同样的宽度切片报流水；
+    # 以前那句"一章 / 二章"是硬编码两段，第三章进来之后它把十五到二十一天也算进了"二章"。
+    per = 7
+    gross_by_ch = [sum(sum(price[i] * c for i, c in counts.items())
+                       for counts in PLAN[k * per:(k + 1) * per])
+                   for k in range((len(PLAN) + per - 1) // per)]
+    print("章流水: " + " / ".join("ch%d %d" % (k + 1, g) for k, g in enumerate(gross_by_ch)))
     print("covered burger indices:", sorted(seen), "未点单:", missing or "无")
     if missing:
         print("FAIL: 有汉堡整周零人点单")
