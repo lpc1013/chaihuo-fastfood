@@ -1,0 +1,153 @@
+name: CI
+
+# 触发：向主分支/PR 推送都跑一遍全量自检
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# 所有 job 共用同一个 Godot 版本，改版本只改这一处
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  compile-gate:
+    name: 全项目编译闸（脚本无 Parse Error）
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:${{ env.GODOT_VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 为什么不做"逐个文件 --check-only --script"：那个模式下 Godot 只编译单个脚本、
+      # 不加载项目 autoload，于是 Config / GameState / Sfx 这些单例全成 "Identifier not found"。
+      # 实测在完全干净的仓库上会误报 26 个文件、CI 永久飘红。
+      # `--import` 也不行：它只重导资产，不重新编译 GDScript，注入一个真错它也检测不出来。
+      # 唯一可靠的编译闸是"在项目上下文里启动"——autoload 能解析，真错会以
+      # `SCRIPT ERROR: Parse Error` 打出来。用最短的 envcheck 模式当探针即可。
+      - name: 项目上下文编译闸
+        run: |
+          set -e
+          log=/tmp/compile.log
+          godot --headless --path . -- --test=envcheck > "$log" 2>&1 || true
+          echo "--- 日志尾部 ---"; tail -20 "$log"
+          if grep -qE "SCRIPT ERROR|Parse Error" "$log"; then
+            echo "::error::全项目编译/运行出现脚本错误："
+            grep -n "SCRIPT ERROR\|Parse Error" -A1 "$log" | head -30
+            exit 1
+          fi
+          echo "编译闸通过：全项目脚本无 Parse Error / SCRIPT ERROR"
+
+      # 被 exclude_filter 排除的目录里绝不能有 .gd：它们不进包，却会全局注册 class_name。
+      # 一份残留的 tools/_scratch/bak.gd 就能抢注 DaySim，导致源码树全绿、导出包一开机就崩。
+      # 这个检查必须在 Godot 之外做（真出事时测试脚本自己也编译不过）。
+      - name: 排除目录里不得残留 .gd（全局类名抢注）
+        run: |
+          stray=$(find tools screenshots saves legacy_web_v1 -name "*.gd" -type f 2>/dev/null || true)
+          if [ -n "$stray" ]; then
+            echo "::error::排除目录里发现 .gd，它们不会进包却可能抢注全局类名："
+            echo "$stray"
+            exit 1
+          fi
+
+  headless-suite:
+    name: 无头自检套件
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:${{ env.GODOT_VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 预热导入（生成 .godot/ 缓存）
+        run: godot --headless --path . --import 2>&1 | tail -5
+
+      # 纯逻辑套件：无头即可，覆盖 P1/P2 修复点与跨分辨率布局热点
+      - name: 跑 smoke / border / chapter / trace
+        run: |
+          set -e
+          for m in smoke border chapter trace; do
+            echo "================ $m ================"
+            log="/tmp/${m}.log"
+            godot --headless --path . -- --test="$m" > "$log" 2>&1 || true
+            tail -8 "$log"
+            # 引擎级报错不体现在 checks= 里，单独当失败处理
+            if grep -qE "SCRIPT ERROR|Parse Error" "$log"; then
+              echo "::error::$m 出现引擎级脚本错误"
+              grep -n "SCRIPT ERROR\|Parse Error" -A1 "$log" | head -20
+              exit 1
+            fi
+            grep -qE "ALL PASS|: PASS|shots=[0-9]+ fails=0" "$log" || { echo "::error::$m 未通过"; exit 1; }
+          done
+
+      # 需要真实窗口取帧/计时的套件跑在虚拟显示里
+      - name: 跑 soak / perf / artcheck / music / envcheck（xvfb）
+        run: |
+          set -e
+          for m in soak perf artcheck music envcheck; do
+            echo "================ $m ================"
+            log="/tmp/${m}.log"
+            xvfb-run -a -s "-screen 0 1280x720x24" \
+              godot --path . -- --test="$m" > "$log" 2>&1 || true
+            tail -8 "$log"
+            if grep -qE "SCRIPT ERROR|Parse Error" "$log"; then
+              echo "::error::$m 出现引擎级脚本错误"
+              grep -n "SCRIPT ERROR\|Parse Error" -A1 "$log" | head -20
+              exit 1
+            fi
+            grep -qE "ALL PASS|: PASS|ALL DONE|ARTCHECK OK" "$log" || { echo "::error::$m 未通过"; exit 1; }
+          done
+
+  export-check:
+    name: 导出可运行性（资源完整性）
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:${{ env.GODOT_VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 导入资源
+        run: godot --headless --path . --import 2>&1 | tail -5
+
+      # godot-ci 镜像自带的是 Linux 导出模板，而本项目 export_presets.cfg 里只有
+      # Windows preset（本地有 Windows 模板，实测可导）。这里的目的不是出 Windows 包，
+      # 而是验证「资源不缺、脚本能被导出器收进 pck」——用镜像自带的 Linux 模板现造一个
+      # 临时 preset 来导，最贴近真实打包路径。真正出 Windows 包在本地按 README 导。
+      - name: 临时加 Linux preset 并试导出
+        run: |
+          set -e
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.1]
+
+          name="CI Linux"
+          platform="Linux/X11"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter="data/config/*.json"
+          exclude_filter="screenshots/*, saves/*, legacy_web_v1/*, tools/*"
+          export_path=""
+
+          [preset.1.options]
+          export_path="builds/ci/out.x86_64"
+          EOF
+          mkdir -p builds/ci
+          godot --headless --path . --export-release "CI Linux" "builds/ci/out.x86_64" 2>&1 | tail -30
+
+      - name: 校验导出产物非空
+        run: |
+          set -e
+          test -s builds/ci/out.x86_64 || { echo "::error::导出产物为空，资源可能缺失"; exit 1; }
+          ls -la builds/ci
+
+      - name: 上传导出产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-export
+          path: builds/ci
+          if-no-files-found: ignore
+          retention-days: 7

@@ -80,13 +80,21 @@ func toggle_muted() -> bool:
 	return muted
 
 func add_coins(n: int) -> void:
+	# 资金只进不出这条通道：负数会凭空扣钱，属非法入参，直接丢弃。
+	if n < 0:
+		push_warning("[GameState] add_coins 收到负数 %d，已忽略" % n)
+		return
 	coins += n
 	if n > 0:
 		total_coins += n
 	coins_changed.emit()
 
 func spend_coins(n: int) -> bool:
-	if coins < n:
+	# 规则在 Economics.can_spend（纯函数）：负金额等于反向充值，必须拒绝，
+	# 否则 `spend_coins(-100)` 会凭空加钱。
+	if not Economics.can_spend(coins, n):
+		if n < 0:
+			push_warning("[GameState] spend_coins 收到负数 %d，已拒绝" % n)
 		return false
 	coins -= n
 	coins_changed.emit()
@@ -142,21 +150,34 @@ func inv_count(key: String) -> int:
 	return int(inventory.get(key, 0))
 
 func inv_use(key: String) -> bool:
-	if inv_count(key) <= 0:
+	# 只减通道：余额不足就是不成功（规则在 Economics.inv_use_result）。
+	var next = Economics.inv_use_result(inv_count(key))
+	if next == null:
 		return false
-	inventory[key] = inv_count(key) - 1
+	inventory[key] = next
 	inventory_changed.emit()
 	return true
 
 func inv_add(key: String, n: int) -> void:
-	inventory[key] = inv_count(key) + n
+	# 只增通道：负数既不合理（那是 inv_use 的职责），还可能制造负库存。
+	# 规则在 Economics.inv_add_result（纯函数），结果钳制非负。
+	var next = Economics.inv_add_result(inv_count(key), n)
+	if next == null:
+		push_warning("[GameState] inv_add 收到负数 %d（key=%s），已忽略" % [n, key])
+		return
+	inventory[key] = next
 	inventory_changed.emit()
 
 func ingredient_cost(key: String, n: int, unit_mult: float) -> int:
-	var unit := int(Config.ingredient(key).get("cost", 1))
-	return int(ceil(float(unit) * unit_mult)) * n
+	# 单价倍率必须为正，否则单价会变成 0 或负数，进而制造"免费/倒贴"采购。
+	return Economics.ingredient_cost(int(Config.ingredient(key).get("cost", 1)), n, unit_mult)
 
 func buy_ingredient(key: String, n: int, unit_mult: float) -> bool:
+	# 非法入参守卫（规则在 Economics.can_buy）：数量必须是正整数、单价倍率必须为正，
+	# 否则既不扣钱也不入库。
+	if not Economics.can_buy(n, unit_mult):
+		push_warning("[GameState] buy_ingredient 入参非法 n=%d mult=%f（key=%s），已拒绝" % [n, unit_mult, key])
+		return false
 	var cost := ingredient_cost(key, n, unit_mult)
 	if not spend_coins(cost):
 		return false
@@ -188,21 +209,28 @@ func apply_save_dict(d: Dictionary) -> void:
 	initialize_new()
 	if d.is_empty():
 		return
-	coins = int(d.get("coins", coins))
-	rep = float(d.get("rep", rep))
+	# 基础数值：先按类型取，再做范围钳制，保证从磁盘进来的任何脏数据都不会破坏不变量。
+	coins = maxi(0, int(d.get("coins", coins)))
+	rep = clampf(float(d.get("rep", rep)), float(Config.economy.get("rep_min", 0.0)), float(Config.economy.get("rep_max", 5.0)))
 	day = maxi(1, int(d.get("day", day)))
-	best_combo = int(d.get("best_combo", best_combo))
-	total_served = int(d.get("total_served", total_served))
-	total_coins = int(d.get("total_coins", total_coins))
+	best_combo = maxi(0, int(d.get("best_combo", best_combo)))
+	total_served = maxi(0, int(d.get("total_served", total_served)))
+	total_coins = maxi(0, int(d.get("total_coins", total_coins)))
 	intro_seen = bool(d.get("intro_seen", intro_seen))
 	mystery_seen = bool(d.get("mystery_seen", mystery_seen))
 	ending_chapter = clampi(int(d.get("ending_chapter", 0)), 0, Config.chapter_count())
 	tut_done = bool(d.get("tut_done", tut_done))
-	upgrades = d.get("upgrades", {}).duplicate()
 	muted = bool(d.get("muted", muted))
-	shop_spent_pending = int(d.get("shop_spent_pending", 0))
-	# 磁盘上的 JSON 不保证类型（第十七轮 `player` 写成数组直接把开机弄崩过一次），
-	# 所以这里先验类型再取。类型不对就当没做过菜——勾会丢，但游戏还得能起来。
+	shop_spent_pending = maxi(0, int(d.get("shop_spent_pending", 0)))
+
+	# 升级表：必须是字典。历史上 `upgrades` 被写成数组，导致后续 `upgrades.keys()` 直接崩。
+	var ug = d.get("upgrades", {})
+	if typeof(ug) != TYPE_DICTIONARY:
+		push_warning("[GameState] 存档 upgrades 不是对象，已忽略")
+		ug = {}
+	upgrades = (ug as Dictionary).duplicate()
+
+	# 图鉴：原本就做了类型校验（第十七轮 `player` 写成数组崩过），保留并强化。
 	var dd = d.get("dishes_done", {})
 	dishes_done = {}
 	if typeof(dd) == TYPE_DICTIONARY:
@@ -215,7 +243,12 @@ func apply_save_dict(d: Dictionary) -> void:
 				n = int(v)
 			if n > 0:
 				dishes_done[str(k)] = n
-	var inv: Dictionary = d.get("inventory", {})
+
+	# 库存：必须是字典，且结果钳制在非负。"负库存"既不合理，也会让库存计数出现诡异的下溢。
+	var inv = d.get("inventory", {})
+	if typeof(inv) != TYPE_DICTIONARY:
+		push_warning("[GameState] 存档 inventory 不是对象，已回退初始库存")
+		inv = {}
 	var base := Config.start_inventory()
 	for k in base.keys():
-		inventory[k] = int(inv.get(k, base[k]))
+		inventory[k] = maxi(0, int((inv as Dictionary).get(k, base[k])))

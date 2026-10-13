@@ -110,7 +110,14 @@ func after_mystery() -> void:
 func after_day_settled(stats: Dictionary, orders: Array, shop_spent: int = 0) -> void:
 	var rec := stats.duplicate()
 	rec["shop_spent"] = shop_spent
-	SaveManager.commit_day(rec, orders)
+	# 日结算写盘必须确认成功：内存里的玩家进度（金币/天数）在营业过程中已更新，
+	# 若这次 commit 没落盘就闷头推进，会出现"进度更新、台账没跟上"的脏状态。
+	# 失败时重试一次；仍失败则告警——内存状态是对的，后续 save_all 会补写。
+	var ok := SaveManager.commit_day(rec, orders)
+	if not ok:
+		ok = SaveManager.commit_day(rec, orders)
+		if not ok:
+			push_warning("[Main] 日结算存档写入失败（已重试一次仍失败），玩家进度已在内存中，稍后存盘会补写")
 	var finished_day := int(stats.get("day", GameState.day))
 	var ch := Config.chapter_of(finished_day)
 	if finished_day == 1 and not GameState.mystery_seen:
@@ -174,6 +181,10 @@ func _run_test_mode() -> void:
 			script_path = "res://tests/trace_check.gd"
 		"perf":
 			script_path = "res://tests/perf_check.gd"
+		"balance":
+			script_path = "res://tests/balance_check.gd"
+		"shot":
+			script_path = "res://tests/shot.gd"
 		"envcheck":
 			script_path = "res://tests/envcheck.gd"
 		_:

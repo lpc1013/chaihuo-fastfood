@@ -24,3 +24,7 @@ saves/
 
 .DS_Store
 Thumbs.db
+
+# —— AI 会话本地数据，不入库
+.workbuddy/
+.workbuddy-ai/

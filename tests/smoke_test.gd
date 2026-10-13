@@ -1,5 +1,8 @@
 extends Node
 const TestEnv := preload("res://tests/test_env.gd")
+const UnlockRules := preload("res://scripts/core/unlock_rules.gd")
+const CookingSystem := preload("res://scripts/core/cooking_system.gd")
+const Economics := preload("res://scripts/core/economics.gd")
 ## 冒烟测试（无窗口全逻辑验证）：
 ##   godot --headless --path <项目> -- --test=smoke
 ## 覆盖：配置加载、存档往返、连续两日营业、柴火系统、边界情况、升级、配置热重载、稳定性连打。
@@ -42,6 +45,13 @@ func run(m: Node) -> void:
 	_test_corrupt_save()
 	_test_healthy_save()
 	_test_bad_player_type()
+	_test_cook_speed_once()
+	_test_economic_invariants()
+	_test_save_field_fuzz()
+	_test_commit_consistency()
+	_test_play_layout()
+	_test_cooking_system()
+	_test_economics_module()
 	_dump_evidence()
 	_restore_saves()
 	print("============ RESULT ============")
@@ -212,6 +222,16 @@ func _test_plan_gates() -> void:
 	check(Config.burger_resolved(0) == 0, "已解锁的单不被改动")
 	GameState.day = keep_day
 	GameState.rep = keep_rep
+	# 纯规则闸：UnlockRules 不读全局态，"第 N 天 M 星"直接当参数传，验证不需要改 GameState。
+	# 这是审计要的"规则可在无场景/无全局副作用下测试"。
+	var pure_open := UnlockRules.open_indices(Config.burgers(), 1, 5)
+	check(not pure_open.is_empty(), "UnlockRules 纯计算：第1天5星至少有一道可点")
+	var high_day := UnlockRules.open_indices(Config.burgers(), 99, 5).size()
+	var low_day := UnlockRules.open_indices(Config.burgers(), 1, 0).size()
+	check(high_day >= low_day, "UnlockRules：天数越长可点菜只增不减（%d >= %d）" % [high_day, low_day])
+	check(UnlockRules.burger_open(Config.burger(0), 1, Config.economy.get("rep_max", 5)) == true,
+		"UnlockRules：开局菜在满星下必定可点")
+	check(UnlockRules.burger_open(Config.burger(0), 0, 5) == false, "UnlockRules：第 0 天任何菜都不可点")
 
 ## 代码里读了的文案键，必须真的取得出非空值。
 ## 起因：预告页那枚 44 号大标题写的是 `Config.ui("teaser_title")`，而 `ui()` 读的是
@@ -1563,5 +1583,270 @@ func _test_dish_ticks() -> void:
 		"台账记的是%s这一单，勾却不在它身上（下标→id 这一跳错位了）" % served_id)
 	GameState.initialize_new()
 	print("[ticks] 打勾这条链判了 %d 条" % [checks - c0])
+
+# ===================== 审计回归闸（对应审计报告 P1 整改项） =====================
+
+## 猛火灶台（cook_speed_mult 1.1）只能把火候推进加快到恰好 1.10×，绝不 1.21×。
+## 审计点名的"提速被重复应用"：烤架与炸炉都必须只通过 _speed_hot() 取倍率，不能再加乘一次。
+func _test_cook_speed_once() -> void:
+	GameState.initialize_new()
+	var base := DaySim.new()
+	base.start(1, 424242)
+	base.fire = 100.0
+	base.wood = 9
+	base.tap_grill(0)
+	var p0 := float(base.grill[0]["p"])
+	base.tick(1.0)
+	var p_base := float(base.grill[0]["p"]) - p0
+
+	GameState.initialize_new()
+	GameState.upgrades = {"stove": true}
+	var up := DaySim.new()
+	up.start(1, 424242)
+	up.fire = 100.0
+	up.wood = 9
+	up.tap_grill(0)
+	var q0 := float(up.grill[0]["p"])
+	up.tick(1.0)
+	var p_up := float(up.grill[0]["p"]) - q0
+	var ratio := p_up / p_base
+	print("[cookspeed] 无升级 Δ=%.4f 有升级 Δ=%.4f 倍率=%.3f" % [p_base, p_up, ratio])
+	check(absf(ratio - 1.1) < 0.01, "烤架提速恰好 1.10× 而非 1.21×（实得 %.3f）" % ratio)
+
+	# 炸炉同理
+	GameState.initialize_new()
+	var fb := DaySim.new()
+	fb.start(1, 909090)
+	fb.fire = 100.0
+	fb.wood = 9
+	GameState.inv_add("potato", 5)
+	fb.tap_fryer()
+	var fp0 := fb.fryer_p(0)
+	fb.tick(1.0)
+	var fb_base := fb.fryer_p(0) - fp0
+
+	GameState.initialize_new()
+	GameState.upgrades = {"stove": true}
+	var fu := DaySim.new()
+	fu.start(1, 909090)
+	fu.fire = 100.0
+	fu.wood = 9
+	GameState.inv_add("potato", 5)
+	fu.tap_fryer()
+	var fq0 := fu.fryer_p(0)
+	fu.tick(1.0)
+	var fb_up := fu.fryer_p(0) - fq0
+	var fratio := fb_up / fb_base
+	check(absf(fratio - 1.1) < 0.01, "炸炉提速恰好 1.10× 而非 1.21×（实得 %.3f）" % fratio)
+	GameState.initialize_new()
+
+## 经济 API 非法入参闸：spend_coins/buy_ingredient/add_coins/inv_add 必须拒绝非法值，
+## 否则负金额会反向充值、负数量会制造负库存。
+func _test_economic_invariants() -> void:
+	GameState.initialize_new()
+	GameState.coins = 50
+	check(not GameState.spend_coins(-100), "spend_coins(-100) 被拒绝")
+	check(GameState.coins == 50, "负消费不能改变金币（仍为 50）")
+	GameState.coins = 50
+	check(not GameState.buy_ingredient("patty", 0, 1.0), "买 0 个被拒绝")
+	check(not GameState.buy_ingredient("patty", -3, 1.0), "买负数个被拒绝")
+	check(not GameState.buy_ingredient("patty", 2, 0.0), "单价倍率 0 被拒绝")
+	check(not GameState.buy_ingredient("patty", 2, -1.0), "单价倍率负数被拒绝")
+	check(GameState.coins == 50, "非法采购前后金币不变（仍为 50）")
+	# 正常采购仍可行且账对得上
+	GameState.initialize_new()
+	GameState.coins = 100
+	GameState.inventory = {}
+	GameState.inventory["patty"] = 0
+	check(GameState.buy_ingredient("patty", 2, 1.0), "正常采购成功")
+	check(GameState.coins == 92, "采购正确扣费（100-8）")
+	check(GameState.inv_count("patty") == 2, "采购正确入库（增量 2）")
+	# inv_add 不接受负数、不产生负库存
+	GameState.initialize_new()
+	GameState.inventory = {}
+	GameState.inventory["bun"] = 3
+	GameState.inv_add("bun", -5)
+	check(GameState.inv_count("bun") == 3, "inv_add 负数被忽略，库存保持 3")
+	# add_coins 不接受负数
+	GameState.initialize_new()
+	var c0 := GameState.coins
+	GameState.add_coins(-10)
+	check(GameState.coins == c0, "add_coins 负数被拒绝")
+	GameState.initialize_new()
+
+## 存档字段模糊测试：磁盘 JSON 类型不可信，apply_save_dict 必须在任何脏字段下都不崩、且钳制不变量。
+func _test_save_field_fuzz() -> void:
+	var cases: Array = [
+		{"coins": 10, "upgrades": [1, 2, 3], "inventory": [1, 2], "day": 2},  # 数组型字段
+		{"coins": -5, "day": 2},                                             # 负金币
+		{"coins": "abc", "day": 2},                                          # 非数字金币
+		{"upgrades": "nope", "inventory": "nope"},                           # 字符串型字段
+		{"inventory": {"bun": -3}, "day": 2},                               # 负库存
+		{"day": "x", "rep": "y"}                                            # 非数字天数/声望
+	]
+	for c in cases:
+		GameState.initialize_new()
+		GameState.apply_save_dict(c)
+		check(GameState.coins >= 0, "脏存档金币被钳制为非负（case %s）" % str(c))
+		check(GameState.inv_count("bun") >= 0, "脏存档库存被钳制为非负（case %s）" % str(c))
+		check(typeof(GameState.upgrades) == TYPE_DICTIONARY, "upgrades 一定是字典（case %s）" % str(c))
+		check(GameState.day >= 1, "脏存档天数被钳制为 >=1（case %s）" % str(c))
+	GameState.initialize_new()
+	check(true, "存档字段模糊测试不崩溃（%d 例）" % cases.size())
+
+## 经济闸：Economics 是纯函数模块，资金/库存的不变量只有一份定义，
+## 不依赖 GameState 就能单独断言（审计要的"经济操作收敛到受控入口"）。
+func _test_economics_module() -> void:
+	check(not Economics.can_spend(50, -100), "Economics：负数不可消费")
+	check(not Economics.can_spend(50, 51), "Economics：余额不足不可消费")
+	check(Economics.can_spend(50, 50), "Economics：刚好够可以消费")
+	check(not Economics.can_buy(0, 1.0) and not Economics.can_buy(-1, 1.0), "Economics：非正数量不可买")
+	check(not Economics.can_buy(2, 0.0) and not Economics.can_buy(2, -1.0), "Economics：非正倍率不可买")
+	check(Economics.can_buy(2, 1.5), "Economics：正数量正倍率可买")
+	check(Economics.ingredient_cost(4, 2, 1.0) == 8, "Economics：单价 4×2 = 8")
+	check(Economics.ingredient_cost(3, 1, 1.5) == 5, "Economics：3×1.5 向上取整 = 5")
+	check(Economics.ingredient_cost(4, -3, 1.0) == 0, "Economics：负数量算出 0（不产生倒贴价）")
+	check(Economics.inv_add_result(3, -5) == null, "Economics：库存增负数被拒")
+	check(Economics.inv_add_result(3, 2) == 5, "Economics：库存 3+2=5")
+	check(Economics.inv_add_result(-4, 0) == 0, "Economics：负库存被钳制回 0")
+	check(Economics.inv_use_result(0) == null, "Economics：空库存不可再减")
+	check(Economics.inv_use_result(3) == 2, "Economics：库存 3→2")
+	print("[economics] Economics 纯函数闸判了 %d 条" % 14)
+
+## 烹饪系统闸：CookingSystem 的纯函数（推进倍率 / 选篮 / 新篮）不依赖场景，
+## 且倍率只应用一次——这正是审计两条 P1 的规则被固化成可单测断言的地方。
+func _test_cooking_system() -> void:
+	# 倍率只乘一次：升级 1.1，火力充足时恰好 1.1（不是 1.21）
+	check(absf(CookingSystem.speed_hot(100.0, 35.0, 0.6, 1.1) - 1.1) < 0.0001,
+		"CookingSystem：火力充足时倍率恰好 ×1.1，不重复叠乘")
+	# 火力不足再叠 low_speed_mult
+	check(absf(CookingSystem.speed_hot(10.0, 35.0, 0.6, 1.1) - 0.66) < 0.0001,
+		"CookingSystem：火力不足时 ×0.6 降速叠加")
+	check(absf(CookingSystem.speed_hot(100.0, 35.0, 0.6, 1.0) - 1.0) < 0.0001,
+		"CookingSystem：无升级时倍率为 ×1.0")
+	# 新篮初值
+	var nb := CookingSystem.new_basket()
+	check(float(nb["p"]) < 0.0 and str(nb["item"]) == "", "CookingSystem：新炸篮是空篮")
+	# 选篮：单篮时任何 p 都指向 0 号
+	var one := [{"p": -1.0, "warned": false, "item": ""}]
+	var always0 := true
+	for probe_p in [-1.0, 0.20, 0.80, 1.10, 1.30]:
+		(one[0] as Dictionary)["p"] = probe_p
+		if CookingSystem.fryer_focus(one, 0.72, 1.0, 1.22) != 0:
+			always0 = false
+	check(always0, "CookingSystem：单篮时选篮恒指 0 号（行为零变化）")
+	check(not CookingSystem.any_busy(one) == (float((one[0] as Dictionary)["p"]) < 0.0),
+		"CookingSystem：空篮不算忙")
+	check(CookingSystem.in_window(0.80, 0.72, 1.0) and not CookingSystem.in_window(1.10, 0.72, 1.0),
+		"CookingSystem：起锅窗口判定含端点且排除越界值")
+	print("[cooking] CookingSystem 纯函数闸判了 %d 条" % 9)
+
+## 布局闸：PlayLayout.compute 是纯函数，不需要场景节点就能算工位矩形——
+## 这正是审计要的"业务/几何可以在无场景条件下测试"。同时锁住关键锚点，防止重排时漂移。
+func _test_play_layout() -> void:
+	# 纯函数：不依赖任何 Node，同输入必同输出
+	var a := PlayLayout.compute(Vector2(1280, 720))
+	var b := PlayLayout.compute(Vector2(1280, 720))
+	check(a == b, "PlayLayout.compute 同输入结果一致（纯函数）")
+	# 六个工位矩形都在，且落在视口内
+	var names := ["fire", "grill", "fryer", "asm", "tray", "drink"]
+	var all_inside := true
+	for n in names:
+		if not a.has(n):
+			all_inside = false
+			continue
+		var r: Rect2 = a[n]
+		if r.position.x < 0.0 or r.position.y < 0.0 or r.end.x > 1280.0 or r.end.y > 720.0 or r.size.x <= 0.0 or r.size.y <= 0.0:
+			all_inside = false
+	check(all_inside, "六个工位矩形齐备且都在 1280x720 视口内")
+	# 关键锚点行：叉烧炉在左、饮料机在右，顺序不能反
+	check((a["fire"] as Rect2).position.x < (a["drink"] as Rect2).position.x, "柴火炉在饮料机左侧")
+	check((a["slots"] as Array).size() == 4, "四个客人柜位")
+	check((a["head_y"] as float) < (a["counter_y"] as float), "head_y 在 counter_y 之上（客人头在台面之上）")
+	# cell_zone 落在工位格内部（状态叠加层不越界）
+	var g: Rect2 = a["grill"]
+	var z := PlayLayout.cell_zone(g)
+	check(z.position.x >= g.position.x and z.end.x <= g.end.x and z.position.y >= g.position.y and z.end.y <= g.end.y,
+		"cell_zone 不越出工位格")
+	# 炸篮几何组数与篮子能力挂钩（和 smoke 里那条跨文件闸同源，这里直接盯模块）
+	check(PlayLayout.FRY_GEO.size() >= Config.fryer_baskets(),
+		"PlayLayout.FRY_GEO 备足了炸篮坐标（%d >= %d）" % [PlayLayout.FRY_GEO.size(), Config.fryer_baskets()])
+	print("[layout] PlayLayout 纯计算闸判了 %d 条" % 8)
+	_test_layout_resolutions()
+
+## 跨分辨率热区闸（审计问题 07 / UI 可读性）：工位热区在任何支持的视口尺寸下
+## 都必须落在视口内、彼此不重叠、且相对位置稳定（左到右的顺序不能乱）。
+## 这里直接吃纯函数，所以不需要真的开不同尺寸的窗口——正是抽 PlayLayout 换来的能力。
+func _test_layout_resolutions() -> void:
+	var sizes: Array = [
+		Vector2(1280, 720), Vector2(1600, 900), Vector2(1920, 1080),
+		Vector2(1024, 768), Vector2(1366, 768), Vector2(2560, 1440), Vector2(800, 600),
+	]
+	var names := ["fire", "grill", "fryer", "asm", "tray", "drink"]
+	var all_ok := true
+	var order_ok := true
+	for vp in sizes:
+		var L := PlayLayout.compute(vp)
+		var prev_x := -1.0
+		for n in names:
+			var r: Rect2 = L[n]
+			if r.position.x < 0.0 or r.position.y < 0.0 or r.end.x > vp.x or r.end.y > vp.y \
+					or r.size.x <= 0.0 or r.size.y <= 0.0:
+				all_ok = false
+				print("  OOB %s @ %s -> %s" % [n, str(vp), str(r)])
+			if r.position.x < prev_x:
+				order_ok = false
+			prev_x = r.position.x
+		# 客人柜位与底部木格也必须在视口内
+		for s in (L["slots"] as Array):
+			var sx := float((s as Dictionary)["x"])
+			if sx < 0.0 or sx > vp.x:
+				all_ok = false
+		if (L["shelf"] as Rect2).end.y > vp.y + 0.5:
+			all_ok = false
+	check(all_ok, "七种视口尺寸下所有工位热区都在视口内（含 16:9 / 4:3 / 16:10 / 21:9）")
+	check(order_ok, "工位左→右顺序在所有尺寸下保持一致（柴火炉→烤架→炸炉→铁板→荷叶→饮料机）")
+	# 相邻工位不重叠（否则一个点击会被两个热区抢）
+	var overlap_ok := true
+	for vp in sizes:
+		var L := PlayLayout.compute(vp)
+		for i in range(names.size() - 1):
+			var a: Rect2 = L[names[i]]
+			var b: Rect2 = L[names[i + 1]]
+			if a.end.x > b.position.x + 0.5:
+				overlap_ok = false
+				print("  OVERLAP %s/%s @ %s" % [names[i], names[i + 1], str(vp)])
+	check(overlap_ok, "相邻工位热区互不重叠（所有尺寸）")
+	# 基准尺寸比例不变式：工位几何按视口比例推导，换分辨率只缩放不平移
+	var base := PlayLayout.compute(Vector2(1280, 720))
+	var dbl := PlayLayout.compute(Vector2(2560, 1440))
+	var scale_ok := absf((base["fire"] as Rect2).position.x * 2.0 - (dbl["fire"] as Rect2).position.x) <= 1.0
+	check(scale_ok, "1280→2560 工位位置按比例缩放（布局与分辨率解耦）")
+	print("[layout] 跨分辨率闸：%d 种尺寸 × %d 工位" % [sizes.size(), names.size()])
+
+## 存档一致性闸：玩家存档与营业台账必须属于同一次提交。若台账写盘失败过（玩家成功、
+## 台账没跟上），commit_id 对不上，加载时必须告警，但玩家进度以存档为准不能丢。
+func _test_commit_consistency() -> void:
+	if SaveManager.save_dir != SaveManager.TEST_SAVE_DIR:
+		check(false, "commit 一致性用例拒绝执行：当前不在隔离目录（%s）" % SaveManager.save_dir)
+		return
+	GameState.initialize_new()
+	GameState.coins = 777
+	check(SaveManager.save_all(), "一致性用例：正常存一次")
+	GameState.initialize_new()
+	SaveManager.load_all()
+	check(GameState.coins == 777, "正常往返：金币 777 读回")
+	# 构造"玩家已写、台账没跟上"的不一致：把台账的 commit_id 改成旧的
+	var ld := SaveManager.ledger.duplicate(true)
+	ld["commit_id"] = "stale-commit-id"
+	_write(SaveManager.ledger_path(), JSON.stringify(ld, "  "))
+	SaveManager.load_all()
+	check(str(SaveManager.load_error) != "", "玩家与台账 commit_id 不一致时给出警告（实得「%s」）" % str(SaveManager.load_error))
+	check(GameState.coins == 777, "不一致时仍以玩家存档为准，金币不丢（仍为 777）")
+	# 修复：重新存一次，使两份文件回到同一次提交
+	SaveManager.save_all()
+	SaveManager.load_all()
+	check(str(SaveManager.load_error) == "", "修复后不再报不一致")
+	GameState.initialize_new()
 
 

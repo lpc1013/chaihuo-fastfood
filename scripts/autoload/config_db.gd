@@ -15,6 +15,13 @@ var story: Dictionary = {}
 var map: Dictionary = {}
 var load_errors: PackedStringArray = []
 
+## 升级效果键白名单：只有这些 key 会被经济/营业逻辑读取。出现未登记 key 说明配置或代码
+## 有一边漏了，validate_config 会报出来，避免"改了升级却没生效"或"乱填键被静默忽略"。
+const KNOWN_EFFECT_KEYS := [
+	"grill_slots_add", "fire_decay_mult", "cook_speed_mult", "patience_decay_mult",
+	"tip_flat_bonus", "customers_per_day_add", "auto_turn", "cut_need_mult"
+]
+
 func _ready() -> void:
 	reload_all()
 
@@ -28,8 +35,70 @@ func reload_all() -> void:
 	difficulty = _load_json("difficulty.json")
 	story = _load_json("story.json")
 	map = _load_json("map.json")
+	# 配置落盘前先过一遍结构校验：把"魔法数字搬进 JSON"变成"可靠的数据驱动"。
+	validate_config()
 	for e in load_errors:
 		push_warning("[Config] " + e)
+
+## 配置结构校验（不校验美术资源，资源引用由 smoke_test._test_art_refs 负责）。
+## 只报告明确的非法情况，正常配置应当零报错；任何一条都应该是一个能直接定位的文案。
+func validate_config() -> void:
+	var ids := {}
+	for b in burgers():
+		var bd: Dictionary = b
+		var id := str(bd.get("id", ""))
+		if id == "":
+			load_errors.append("菜品缺少 id")
+			continue
+		if ids.has(id):
+			load_errors.append("菜品 id 重复: " + id)
+		ids[id] = true
+		var stack: Array = bd.get("stack", [])
+		if stack.is_empty():
+			load_errors.append("菜品配方为空: " + id)
+			continue
+		for k in stack:
+			if ingredient(str(k)).is_empty():
+				load_errors.append("菜品 %s 引用了不存在的食材: %s" % [id, str(k)])
+	for key in dishes.get("ingredients", {}).keys():
+		var ing := ingredient(str(key))
+		var cost = ing.get("cost", 0)
+		if (typeof(cost) != TYPE_INT and typeof(cost) != TYPE_FLOAT) or float(cost) < 0:
+			load_errors.append("食材成本非法（非数字或为负）: " + str(key))
+	for st in ["grill", "fryer", "drink"]:
+		var c := cook(st)
+		var fs = c.get("full_seconds", 0)
+		if (typeof(fs) != TYPE_INT and typeof(fs) != TYPE_FLOAT) or float(fs) <= 0:
+			load_errors.append("烹饪时间必须为正数字: " + st)
+	var uids := {}
+	for u in upgrade_defs():
+		var ud: Dictionary = u
+		var uid := str(ud.get("id", ""))
+		if uid == "":
+			load_errors.append("升级缺少 id")
+			continue
+		if uids.has(uid):
+			load_errors.append("升级 id 重复: " + uid)
+		uids[uid] = true
+		if float(ud.get("cost", 0)) < 0:
+			load_errors.append("升级成本为负: " + uid)
+		var eff: Dictionary = ud.get("effects", {})
+		for ek in eff.keys():
+			if not KNOWN_EFFECT_KEYS.has(str(ek)):
+				load_errors.append("升级 %s 使用了未支持的效果键: %s" % [uid, str(ek)])
+	if float(economy.get("start_coins", 0)) < 0:
+		load_errors.append("起始金币为负")
+	for m in economy.get("rep_tip_mult", []):
+		if typeof(m) != TYPE_INT and typeof(m) != TYPE_FLOAT:
+			load_errors.append("rep_tip_mult 含非数字")
+	var expect := 1
+	for c in chapters():
+		var cc: Dictionary = c
+		if int(cc.get("id", 0)) != expect:
+			load_errors.append("章节 id 不连续，期望 %d 实得 %d" % [expect, int(cc.get("id", 0))])
+		expect += 1
+		if int(cc.get("days", 0)) < 1:
+			load_errors.append("章节天数必须 >= 1: " + str(cc.get("id", 0)))
 
 func _load_json(file_name: String) -> Dictionary:
 	# 优先级：user://config/<file>（用户覆盖） > res://data/config/<file>（随包默认）
@@ -84,12 +153,10 @@ func ingredient_name(key: String) -> String:
 func start_inventory() -> Dictionary:
 	return dishes.get("start_inventory", {}).duplicate()
 
+## 规则本体在 UnlockRules（纯函数，显式接收 day）。这里读当前天数后转发，
+## 保持 Config.shelf_order() 这个老签名不变——调用方不必逐个改。
 func shelf_order() -> Array:
-	var out: Array = []
-	for k in all_shelf_order():
-		if int(ingredient(str(k)).get("unlock_day", 1)) <= GameState.day:
-			out.append(k)
-	return out
+	return UnlockRules.shelf_order(dishes, all_shelf_order(), GameState.day)
 
 func all_shelf_order() -> Array:
 	return dishes.get("shelf_order", [])
@@ -106,33 +173,16 @@ func shop_order() -> Array:
 
 ## 已到解锁日的菜谱下标（老菜谱下标不变，只筛可选范围）
 func open_burger_indices() -> Array:
-	var out: Array = []
-	for i in burgers().size():
-		if burger_open(i):
-			out.append(i)
-	return out
+	return UnlockRules.open_indices(burgers(), GameState.day, GameState.rep_stars())
 
 ## 声望既挂解锁也挂小费（设计决策：双挂钩）。星级不足时这道菜连被点单的资格都没有。
+## 规则本体在 UnlockRules.burger_open（纯函数）；这里读当前天数/星级后转发。
 func burger_open(idx: int) -> bool:
-	var b := burger(idx)
-	if b.is_empty():
-		return false
-	if int(b.get("unlock_day", 1)) > GameState.day:
-		return false
-	return int(b.get("unlock_rep", 0)) <= GameState.rep_stars()
+	return UnlockRules.burger_open(burger(idx), GameState.day, GameState.rep_stars())
 
 ## 下标 idx 当前不可点时，回退到一个可点的（默认取原序号最近的可行解）。
 func burger_resolved(idx: int) -> int:
-	if burger_open(idx):
-		return idx
-	var open := open_burger_indices()
-	if open.is_empty():
-		return idx
-	var best := int(open[0])
-	for i in open:
-		if absi(int(i) - idx) < absi(best - idx):
-			best = int(i)
-	return best
+	return UnlockRules.resolved(burgers(), idx, GameState.day, GameState.rep_stars())
 
 ## 按星级查小费倍率，超出表长取末档。
 func rep_tip_mult(stars: int) -> float:
@@ -146,6 +196,11 @@ func drinks() -> Array:
 
 func drink_def(i: int) -> Dictionary:
 	var list: Array = drinks()
+	# 饮品列表为空时，`maxi(list.size() - 1, 0)` 会算出 0，进而 `list[0]` 越界崩。
+	# 这曾经是"配置一少东西整个开机就挂"的来源之一，这里先挡掉。
+	if list.is_empty():
+		push_warning("[Config] drinks 列表为空，drink_def(%d) 退回空字典" % i)
+		return {}
 	return list[clampi(i, 0, maxi(list.size() - 1, 0))]
 
 func sauces() -> Array:

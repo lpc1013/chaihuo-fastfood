@@ -34,17 +34,12 @@ var shelf_drag_scroll0 := 0.0
 var shelf_drag_moved := false
 var shelf_drag_idx := -1
 
-# 炸锅动画：背景那台炸炉的挂架位与井位（工位格内的比例，跟着分辨率走）。
-# v12 底图**本身就画了一只空漏勺搁在后沿两池上**，实测它的中心在整屏 (41.5%, 61%)、
-# 宽约 10.5% 屏宽。挂架位就按它反推（x=(0.415-0.345)/0.145、y=(0.610-0.505)/0.255），
-## 每只篮子的挂架位与油井位（都是工位格内分数，所以和分辨率无关）。
-## 0 号是按底图那只画上去的空篮量的——篮子尺寸也量到同一个宽度，这样"提起来"
-## 是同一只篮子回到它本来的姿态，而不是画面里同时出现两只漏勺（用户就是指着这个问的）。
-## **加篮子必须同时在这里加一行**：漏了就会有两支篮子画在同一个位置，那正是上面那个病。
-## smoke 里有一条闸盯着 `Config.fryer_baskets() <= FRY_GEO.size()`，漏加会当场红。
-const FRY_GEO := [
-	{"home": Vector2(0.48, 0.41), "well": Vector2(0.58, 0.56)},
-]
+# 炸篮几何（挂架位/油井位，工位格内分数）已挪进 PlayLayout.FRY_GEO——那里有完整来历注释。
+# 这里保留同名常量别名：一是本文件既有引用不用改，二是 smoke 里那条
+# `Config.fryer_baskets() <= FRY_GEO.size()` 的闸是按 play.gd 的常量表取的，别名让它继续生效。
+# **加篮子必须同时给 PlayLayout.FRY_GEO 加一行**，漏了会当场红。
+const FRY_GEO := PlayLayout.FRY_GEO
+
 ## 每篮一份动画状态：phase（"" / down / up / burn）、t（本段已走秒数）、
 ## p_prev（上一帧模拟层的进度，用来抓 空→有料 / 有料→空 的跳变）、
 ## item（这篮下锅时炸的是什么——起锅时 sim 会把篮子清空，所以得趁还有料时抄下来）
@@ -213,56 +208,10 @@ func _vp() -> Vector2:
 	return get_viewport_rect().size
 
 # ---------------- 布局 ----------------
+## 工位布局已抽到 PlayLayout（纯计算、独立可测）。这里只做一层转发，
+## 调用方（本文件各处绘制/输入、autotest 里的 `play.ly()`、perf_check）读到的字典键不变。
 func ly() -> Dictionary:
-	var W := _vp().x
-	var H := _vp().y
-	var pad := maxf(6.0, roundf(minf(W, H) * 0.02))
-	# 背景回退到 v12（用户：扩第二排那一串版本"太差劲"，回到扩建之前那版）。
-	# v12 是砖砌台身 + **单排六件**：街面 0~44%，台面设备 47%~76%，砖前立面 52%~79%，
-	# 木框食材格 82.8%~93.3%（白bin实测只有这一段），底下 96%~100% 是木护栏。
-	var scene_h := roundf(H * 0.45)
-	var counter_y := roundf(H * 0.44)
-	var cust_h := roundf(H * 0.245)
-	var k_top := roundf(H * 0.45)
-	var row_y := roundf(H * 0.48)
-	var row_h := roundf(H * 0.28)
-	var shelf_y := roundf(H * 0.828)
-	var shelf_h := roundf(H * 0.105)
-	var u := W - pad * 2.0
-	# 六个工位各自的位置，量自 v12 背景（tools/bgfit.py + 5% 网格读数校）。
-	# 顺序 [x, w, y, h]：柴火炉 / 圆形烤网 / 三池炸炉 / 花纹铁板 / 芭蕉叶 / 三连饮料机。
-	# 虽然是一排，每件高度差仍然很大（炉顶 47.5%、铁板只到 61.5%），共用一条 row_y 会飘。
-	var boxes := [
-		[0.010, 0.185, 0.475, 0.270],
-		[0.195, 0.150, 0.585, 0.160],
-		[0.345, 0.145, 0.505, 0.255],
-		[0.488, 0.162, 0.615, 0.150],
-		[0.650, 0.175, 0.575, 0.190],
-		[0.820, 0.175, 0.465, 0.260],
-	]
-	var names := ["fire", "grill", "fryer", "asm", "tray", "drink"]
-	var rects := {}
-	for i in 6:
-		rects[names[i]] = Rect2(roundf(W * boxes[i][0]), roundf(H * boxes[i][2]),
-			roundf(W * boxes[i][1]), roundf(H * boxes[i][3]))
-	rects["bench"] = Rect2(pad, row_y, u, row_h)
-	var slots: Array = []
-	var sw := minf(W * 0.20, 190.0)
-	for s in 4:
-		slots.append({"x": roundf(W * [0.36, 0.52, 0.68, 0.84][s]), "y": counter_y, "w": sw})
-	rects["shelf"] = Rect2(pad, shelf_y, u, shelf_h)
-	# 四瓶酱料站在**设备那一排上方的石质后沿**上（用户红框指的那条小平台）：
-	# v12 从左到右是 街面 0~44% → 台面后沿 47~52% → 砖砌矮墙 52~56% → 工作台面 56~78%。
-	# 瓶子踩在后沿上往上长，木牌挂在它们下面的砖矮墙上；左端从 19% 起是给柴堆让开的
-	# （柴堆站在炉顶石板上，占 1%~19%），右端收到 50% 免得压到案板格。
-	rects["ledge"] = Rect2(roundf(W * 0.19), roundf(H * 0.470), roundf(W * 0.31), roundf(H * 0.052))
-	rects["counter_y"] = counter_y
-	rects["cust_h"] = cust_h
-	rects["head_y"] = counter_y - cust_h
-	rects["slots"] = slots
-	rects["k_top"] = k_top
-	rects["scene_h"] = scene_h
-	return rects
+	return PlayLayout.compute(_vp())
 
 # ---------------- 绘制 ----------------
 func _draw() -> void:
@@ -517,7 +466,7 @@ func _draw_wood_pile(rect: Rect2) -> void:
 	var tex := UiKit.art("fx/log")
 	if tex == null:
 		return
-	var per := 5
+	var per := PlayLayout.WOOD_PER_ROW
 	var lw := minf(rect.size.x * 0.135, 30.0)
 	var lh := lw * 0.40
 	var x0 := rect.position.x + rect.size.x * 0.05
@@ -550,8 +499,8 @@ func _rbtn(center: Vector2, r: float, glyphs: Array, id: String, enabled: bool) 
 
 
 func _cell_zone(rect: Rect2) -> Rect2:
-	# 设备画在背景图的下半段，状态叠加层要落在设备身上
-	return Rect2(rect.position.x + 6.0, rect.position.y + rect.size.y * 0.30, rect.size.x - 12.0, rect.size.y * 0.60)
+	# 设备画在背景图的下半段，状态叠加层要落在设备身上（几何在 PlayLayout）
+	return PlayLayout.cell_zone(rect)
 
 
 func _progress_bar(rect: Rect2, frac: float, win_a: float, win_b: float, _color: Color) -> void:
@@ -694,10 +643,7 @@ func _fry_at(rect: Rect2, f: Vector2) -> Vector2:
 	return Vector2(rect.position.x + f.x * rect.size.x, rect.position.y + f.y * rect.size.y)
 
 func _fry_geo(i: int) -> Dictionary:
-	# 表比篮子短的时候退回最后一行——但那种情况 smoke 会先红，不该靠这里兜住
-	if FRY_GEO.is_empty():
-		return {"home": Vector2(0.48, 0.41), "well": Vector2(0.58, 0.56)}
-	return FRY_GEO[mini(i, FRY_GEO.size() - 1)]
+	return PlayLayout.fry_geo(i)
 
 ## 模拟层只管逻辑，下篮/提篮这些动画状态全在视图层，靠每只篮子的 p 跳变驱动。
 ## 以前这里只有一份全局状态、只看 0 号篮；两篮同时炸就会有一只没有下篮动画。

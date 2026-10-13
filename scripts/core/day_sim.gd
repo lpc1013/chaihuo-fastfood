@@ -366,7 +366,10 @@ func _tick_stations(dt: float) -> void:
 	var gcfg := Config.cook("grill")
 	var full_g := float(gcfg.get("full_seconds", 6.2))
 	var burn_g := float(gcfg.get("burn_auto", 1.3))
-	var speed_g := _speed_hot() * GameState.effect_mult("cook_speed_mult")
+	# 注意：`_speed_hot()` 已经把 `cook_speed_mult` 乘进去了（含火力不足时的降速）。
+	# 这里**绝不**再乘一次 `effect_mult("cook_speed_mult")`，否则「猛火灶台」的 1.1× 会被
+	# 错误地叠成 1.21×。所有工位都必须只通过 `_speed_hot()` 取这一倍率。
+	var speed_g := _speed_hot()
 	# 自动翻面夹：到点自己翻，玩家只需要在金黄窗口起锅那一下
 	var auto_turn := int(GameState.effect_sum("auto_turn")) > 0
 	var flip_g := float(gcfg.get("flip_min", 0.4))
@@ -389,7 +392,8 @@ func _tick_stations(dt: float) -> void:
 		var bd: Dictionary = b
 		if float(bd["p"]) < 0.0:
 			continue
-		bd["p"] = float(bd["p"]) + dt / full_f * _speed_hot() * GameState.effect_mult("cook_speed_mult")
+		# 只走 `_speed_hot()`：它已含 `cook_speed_mult`，不要再乘一次（否则和烤架一样会变成 1.21×）。
+		bd["p"] = float(bd["p"]) + dt / full_f * _speed_hot()
 		if float(bd["p"]) >= burn_f:
 			bd["p"] = burn_f
 			if not bool(bd["warned"]):
@@ -442,10 +446,12 @@ func _check_day_end() -> void:
 		day_finished.emit()
 
 func _speed_hot() -> float:
-	var s := GameState.effect_mult("cook_speed_mult")
-	if fire < float(Config.fire.get("low_threshold", 35.0)):
-		s *= float(Config.fire.get("low_speed_mult", 0.6))
-	return s
+	# 倍率的唯一算法在 CookingSystem.speed_hot（纯函数）：cook_speed_mult 只乘一次，
+	# 火力不足时再叠 low_speed_mult。所有工位都必须只走这里。
+	return CookingSystem.speed_hot(fire,
+		float(Config.fire.get("low_threshold", 35.0)),
+		float(Config.fire.get("low_speed_mult", 0.6)),
+		GameState.effect_mult("cook_speed_mult"))
 
 # ---------------- 查询 ----------------
 func can_cook() -> bool:
@@ -580,7 +586,7 @@ func _new_fryer(count: int = -1) -> Array:
 	var n := Config.fryer_baskets() if count < 0 else count
 	var out: Array = []
 	for i in maxi(1, n):
-		out.append({"p": -1.0, "warned": false, "item": ""})
+		out.append(CookingSystem.new_basket())
 	return out
 
 ## 这只篮现在炸的是什么（空篮返回 ""）。视图和 bot 都从这儿取，别再猜"就是薯条"。
@@ -596,32 +602,15 @@ func fryer_p(i: int = 0) -> float:
 
 ## 有没有哪只篮子正在炸（HUD 那枚脉冲用的就是这个，不是"0 号篮"）
 func fryer_busy() -> bool:
-	for b in fryer:
-		if float((b as Dictionary)["p"]) >= 0.0:
-			return true
-	return false
+	return CookingSystem.any_busy(fryer)
 
-## 这一次点击该落在哪只篮子：先起锅窗口内的、再糊掉的、再空篮、最后退回任何还在炸的。
-## **只有一只篮子时这四个分支必然都指到 0 号**，所以判路和泛化前那条完全一致——
-## 这是这一步能宣称"行为零变化"的依据，不是靠读代码看出来的是靠 trace 比出来的。
+## 这一次点击该落在哪只篮子。选择算法在 CookingSystem.fryer_focus（纯函数、可单测）：
+## 先起锅窗口内的、再糊掉的、再空篮、最后退回任何还在炸的。**只有一只篮子时四个分支
+## 必然都指到 0 号**，所以判路和泛化前那条完全一致——这是靠 trace 比出来的，不是读代码看出来的。
 func _fryer_focus() -> int:
 	var cfg := Config.cook("fryer")
 	var win: Array = cfg.get("window", [0.72, 1.0])
-	var burn_tap := float(cfg.get("burn_tap", 1.22))
-	for i in fryer.size():
-		var p := float((fryer[i] as Dictionary)["p"])
-		if p >= float(win[0]) and p <= float(win[1]):
-			return i
-	for i in fryer.size():
-		if float((fryer[i] as Dictionary)["p"]) >= burn_tap:
-			return i
-	for i in fryer.size():
-		if float((fryer[i] as Dictionary)["p"]) < 0.0:
-			return i
-	for i in fryer.size():
-		if float((fryer[i] as Dictionary)["p"]) >= 0.0:
-			return i
-	return -1
+	return CookingSystem.fryer_focus(fryer, float(win[0]), float(win[1]), float(cfg.get("burn_tap", 1.22)))
 
 ## 点炸炉。`item` 是要下的料在 `sides` 里的 id（现在是 "fries"，将来还有 "drumstick"）。
 ## 不传就是泛化前那唯一的产品：薯条。烧哪种原料由 `sides[<item>].ingredient` 说，

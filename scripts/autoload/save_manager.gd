@@ -101,35 +101,53 @@ func load_all() -> void:
 			ledger["day_records"] = []
 		if not ledger.has("orders"):
 			ledger["orders"] = []
+	# 一致性校验：玩家存档与台账必须属于同一次提交。若某次 save_all 里台账写盘失败、
+	# 玩家存档写成功，两者 commit_id 就会对不上——这正是审计点名的"钱和天数更新了、
+	# 营业记录却没更新"的脏状态。这里必须告警，但玩家进度以存档为准，绝不能丢。
+	var player_cid = d.get("commit_id", "")
+	if l.has("commit_id") and str(player_cid) != "" and str(l["commit_id"]) != str(player_cid):
+		load_error = "玩家存档与营业台账不是同一次提交（台账可能没存上），已按玩家存档为准"
+		push_warning("[SaveManager] " + load_error)
 	GameState.set_muted(GameState.muted)
 
 func save_all() -> bool:
+	# 每次保存生成一个 commit_id，同时写进玩家存档与台账，作为"两份文件属于同一次提交"的凭据。
+	var cid := _next_commit_id()
 	var payload := {
 		"version": SAVE_VERSION,
 		"saved_at": Time.get_datetime_string_from_system(false, true),
+		"commit_id": cid,
 		"player": GameState.to_save_dict()
 	}
+	ledger["commit_id"] = cid
 	var ok := _write_json(save_path(), payload)
 	var ok2 := _write_json(ledger_path(), ledger)
 	last_saved_at = str(payload["saved_at"])
+	# 玩家进度是权威状态：只要它落盘成功，就认为"有存档"。台账若写入失败，
+	# 会在下次 load 时通过 commit_id 不一致被捕获并告警，而不是被静默吞掉。
 	has_save = ok
 	return ok and ok2
 
 func wipe() -> void:
-	if FileAccess.file_exists(save_path()):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path()))
-	if FileAccess.file_exists(ledger_path()):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(ledger_path()))
+	for f in [save_path(), ledger_path(), save_path() + ".bak", ledger_path() + ".bak", save_path() + ".tmp", ledger_path() + ".tmp"]:
+		if FileAccess.file_exists(f):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	ledger = {"version": SAVE_VERSION, "day_records": [], "orders": []}
 	has_save = false
 
-func commit_day(record: Dictionary, orders: Array) -> void:
+## 同一次 save_all 内的玩家存档与台账共享同一个 id，用于加载时检测"只写了一半"的不一致。
+func _next_commit_id() -> String:
+	return "%d" % Time.get_ticks_usec()
+
+## 日结算提交：写台账 → 返回是否两文件都落盘成功。
+## 返回值让上层（after_day_settled）能在写盘失败时重试，而不是闷头继续推进流程。
+func commit_day(record: Dictionary, orders: Array) -> bool:
 	ledger["day_records"].append(record)
 	for o in orders:
 		ledger["orders"].append(o)
 	if ledger["orders"].size() > MAX_ORDERS:
 		ledger["orders"] = ledger["orders"].slice(ledger["orders"].size() - MAX_ORDERS)
-	save_all()
+	return save_all()
 
 func day_records() -> Array:
 	return ledger.get("day_records", [])
@@ -155,13 +173,47 @@ func _quarantine_corrupt(path: String) -> void:
 	if err != OK:
 		push_warning("[SaveManager] 损坏存档未能移除: %s err=%d" % [path, err])
 
+## 原子写入：先写临时文件，再把上一版留作 .bak，最后改名覆盖真实文件。
+## 进程在写盘途中被掐断，最多留下一个 .tmp（没被改名），而真实文件要么是旧版、要么是完整新版，
+## 绝不会是半截内容——这正是"开机读到半截 JSON 直接崩"的根因。改名失败时回滚到 .bak。
 func _write_json(path: String, data: Dictionary) -> bool:
-	var f := FileAccess.open(path, FileAccess.WRITE)
-	if f == null:
-		push_warning("[SaveManager] 无法写入: " + path)
+	var text := JSON.stringify(data, "  ")
+	var tmp := path + ".tmp"
+	var tf := FileAccess.open(tmp, FileAccess.WRITE)
+	if tf == null:
+		push_warning("[SaveManager] 无法写入临时文件: " + tmp)
 		return false
-	f.store_string(JSON.stringify(data, "  "))
-	f.close()
+	tf.store_string(text)
+	tf.close()
+	# 把上一版留底，便于改名失败回滚
+	if FileAccess.file_exists(path):
+		var prev := FileAccess.get_file_as_string(path)
+		var bf := FileAccess.open(path + ".bak", FileAccess.WRITE)
+		if bf != null:
+			bf.store_string(prev)
+			bf.close()
+		var rem := DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		if rem != OK:
+			push_warning("[SaveManager] 旧文件删除失败: %s err=%d" % [path, rem])
+	var dir := ProjectSettings.globalize_path(save_dir).trim_suffix("/")
+	var d := DirAccess.open(dir)
+	if d == null:
+		push_warning("[SaveManager] 无法打开目录做原子替换: " + dir)
+		# 退化方案：直接覆盖写（和旧实现等价），保证尽量落盘
+		var ff := FileAccess.open(path, FileAccess.WRITE)
+		if ff == null:
+			return false
+		ff.store_string(text)
+		ff.close()
+		return true
+	var err := d.rename(tmp.get_file(), path.get_file())
+	if err != OK:
+		push_warning("[SaveManager] 原子替换失败，尝试从 .bak 回滚: " + path)
+		if FileAccess.file_exists(path + ".bak"):
+			var bd := DirAccess.open(dir)
+			if bd != null:
+				bd.rename((path + ".bak").get_file(), path.get_file())
+		return false
 	return true
 
 func _read_json(path: String) -> Dictionary:
